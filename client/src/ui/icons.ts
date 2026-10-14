@@ -326,19 +326,18 @@ export const FALLBACK_MARK = pixelIcon(
 );
 
 /**
- * Logotipo "Habblaud" em pixels, com a mesma fonte bitmap da placa da marca (assets/brand/signage.png, gerada por
- * scripts/assets/pixelart.py): a Pixelify Sans não fica nítida nesse tamanho.
- * c = "Hab" (creme), t = "blaud" (âmbar), s = sombra de 1 px.
+ * Logotipo "GG2Land" em pixels bitmap art nítido para o topo da aplicação.
+ * g = "GG2" (creme claro), l = "Land" (âmbar/dourado), s = sombra de 1 px.
  */
 export const WORDMARK_ROWS = [
-  'c...c.......c.....t.....tt..................t',
-  'c...c.......c.....t.....st..................t',
-  'c...c..ccc..cccc..tttt...t...ttt..t...t..tttt',
-  'ccccc..sssc.csssc.tssst..t...ssst.t...t.tssst',
-  'csssc..cccc.c...c.t...t..t...tttt.t...t.t...t',
-  'c...c.csssc.c...c.t...t..t..tssst.t...t.t...t',
-  'c...c.scccc.ccccs.tttts.ttt.stttt.stttt.stttt',
-  's...s..ssss.ssss..ssss..sss..ssss..ssss..ssss',
+  '.gggg...gggg...gggg..l.....................l',
+  'g....g.g....g.g....g.l.....................l',
+  'g......g..........g..l......llll.llll...llll',
+  'g..ggg.g..ggg....g...l.........l.l...l.l...l',
+  'g....g.g....g...g....l......llll.l...l.l...l',
+  'g....g.g....g..g.....l.....l...l.l...l.l...l',
+  '.gggg...gggg..gggggg.lllll..llll.l...l..llll',
+  '..ssss...ssss.ssssss.sssss...sss.s...s...sss',
 ] as const;
 
-export const WORDMARK = pixelIcon(WORDMARK_ROWS, { s: 'rgba(6, 8, 14, 0.62)', c: '#f4f1ea', t: '#fac665' }, 'ui-wordmark');
+export const WORDMARK = pixelIcon(WORDMARK_ROWS, { s: 'rgba(6, 8, 14, 0.62)', g: '#f4f1ea', l: '#fac665' }, 'ui-wordmark');
