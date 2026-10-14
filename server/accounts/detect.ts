@@ -223,6 +223,10 @@ const ALIAS_TOOLS: Record<Provider, { invokes: RegExp; dir: RegExp }> = {
     invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?kiro(?=$|[\s;&|)])/,
     dir: /\bKIRO_HOME=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
   },
+  antigravity: {
+    invokes: /(?:^|[\s;&|(])(?:[\w.~/-]*\/)?(?:antigravity|agy)(?=$|[\s;&|)])/,
+    dir: /\bANTIGRAVITY_HOME=(?:"([^"]*)"|'([^']*)'|([^\s;&|]+))/,
+  },
 };
 
 /**

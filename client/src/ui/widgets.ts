@@ -31,13 +31,20 @@ export function createProviderTag(extra = ''): HTMLElement {
   return h('span', { class: `ui-prov${extra ? ` ${extra}` : ''}`, text: 'Codex', hidden: true, title: tr('Agente do Codex (OpenAI)') });
 }
 
-/** Mostra o selo para Codex ou Kiro (e não repete quando o nome da conta já diz a ferramenta). */
+/** Mostra o selo para Codex, Kiro ou Antigravity (e não repete quando o nome da conta já diz a ferramenta). */
 export function updateProviderTag(tag: HTMLElement, provider: Provider, accountName = ''): void {
   const show = showsProviderTag(provider, accountName);
   setHidden(tag, !show);
   if (show) {
-    setText(tag, provider === 'kiro' ? 'Kiro' : 'Codex');
-    setTitle(tag, provider === 'kiro' ? tr('Agente do Kiro') : tr('Agente do Codex (OpenAI)'));
+    setText(tag, provider === 'kiro' ? 'Kiro' : provider === 'antigravity' ? 'Antigravity' : 'Codex');
+    setTitle(
+      tag,
+      provider === 'kiro'
+        ? tr('Agente do Kiro')
+        : provider === 'antigravity'
+          ? tr('Agente do Antigravity')
+          : tr('Agente do Codex (OpenAI)'),
+    );
   }
 }
 

@@ -39,6 +39,8 @@ import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
 import { discoverKiroDir } from './sources/kiro/accounts';
 import { KiroSource } from './sources/kiro/source';
+import { discoverAntigravityDir } from './sources/antigravity/accounts';
+import { AntigravitySource } from './sources/antigravity/source';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
 import { tr } from '../shared/i18n';
@@ -116,6 +118,9 @@ if (codex) agents.add(codex);
 const kiroDir = config.kiro ? discoverKiroDir(process.env, config.home) : undefined;
 const kiro = kiroDir ? new KiroSource({ accounts, office, dir: kiroDir, home: config.home, env: process.env, inDocker: config.inDocker }) : undefined;
 if (kiro) agents.add(kiro);
+const antigravityDir = discoverAntigravityDir(process.env, config.home);
+const antigravity = antigravityDir ? new AntigravitySource({ accounts, office, dir: antigravityDir, home: config.home, env: process.env }) : undefined;
+if (antigravity) agents.add(antigravity);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
