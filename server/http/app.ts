@@ -24,6 +24,7 @@ import { AUDIO_BODY_MAX, type DictationService } from '../dictation/dictation';
 import type { DeliveryIndex } from '../deliveries/deliveries';
 import type { FileFetcher } from '../deliveries/fetcher';
 import { HOST_WAIT_MS } from '../host-wait';
+import type { RoomWatcherManager } from '../watcher/room-watcher';
 
 export interface ApiDeps {
   office: Office;
@@ -87,6 +88,8 @@ export interface ApiDeps {
   renameRoom?: (id: string, name: string) => string | undefined;
   /** Abre uma pasta ou arquivo local no sistema operacional (POST /api/rooms/open). */
   opener?: (path: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Gerenciador de execução do pipeline-watcher.sh por sala (/api/rooms/watcher/*). */
+  watcher?: RoomWatcherManager;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
   stats?: DayStatsService;
   /** Verificação de versão nova no GitHub (GET /api/updates, POST /api/updates/check; updates/checker.ts). */
@@ -705,6 +708,103 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           })
           .catch((err) => fail(res, err));
       return true;
+    }
+    if (path.startsWith('/api/rooms/watcher/')) {
+      if (!deps.watcher) {
+        sendJson(res, 503, { error: 'Watcher não configurado no servidor' });
+        return true;
+      }
+      if (path === '/api/rooms/watcher/status') {
+        if (!isRead) methodNotAllowed(res, 'GET');
+        else {
+          const id = url.searchParams.get('id') ?? '';
+          let folder = url.searchParams.get('path') ?? undefined;
+          if (!folder && id) folder = office.roomPath(id) ?? id;
+          sendJson(res, 200, deps.watcher.getStatus(id, folder));
+        }
+        return true;
+      }
+      if (path === '/api/rooms/watcher/start') {
+        if (method !== 'POST') methodNotAllowed(res, 'POST');
+        else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('iniciar watcher só pelo próprio computador (http://localhost)')) });
+        else {
+          readJson(req)
+            .then((body) => {
+              const b = body as { id?: unknown; path?: unknown };
+              const id = typeof b?.id === 'string' ? b.id : '';
+              let folder = typeof b?.path === 'string' && b.path ? b.path : undefined;
+              if (!folder && id) folder = office.roomPath(id) ?? id;
+              if (!id || !folder) throw new HttpError(400, 'id e path da sala são obrigatórios');
+              const r = deps.watcher!.start(id, folder);
+              if (!r.ok) throw new HttpError(400, r.error ?? 'falha ao iniciar watcher');
+              sendJson(res, 200, r);
+            })
+            .catch((err) => fail(res, err));
+        }
+        return true;
+      }
+      if (path === '/api/rooms/watcher/stop') {
+        if (method !== 'POST') methodNotAllowed(res, 'POST');
+        else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('parar watcher só pelo próprio computador (http://localhost)')) });
+        else {
+          readJson(req)
+            .then((body) => {
+              const b = body as { id?: unknown };
+              const id = typeof b?.id === 'string' ? b.id : '';
+              if (!id) throw new HttpError(400, 'id da sala é obrigatório');
+              const r = deps.watcher!.stop(id);
+              sendJson(res, 200, r);
+            })
+            .catch((err) => fail(res, err));
+        }
+        return true;
+      }
+      if (path === '/api/rooms/watcher/clear') {
+        if (method !== 'POST') methodNotAllowed(res, 'POST');
+        else if (!trusted(req)) sendJson(res, 403, { error: denied(req, 'limpar logs só pelo próprio computador') });
+        else {
+          readJson(req)
+            .then((body) => {
+              const b = body as { id?: unknown };
+              const id = typeof b?.id === 'string' ? b.id : '';
+              if (!id) throw new HttpError(400, 'id da sala é obrigatório');
+              deps.watcher!.clearLogs(id);
+              sendJson(res, 200, { ok: true });
+            })
+            .catch((err) => fail(res, err));
+        }
+        return true;
+      }
+      if (path === '/api/rooms/watcher/stream') {
+        if (!isRead) methodNotAllowed(res, 'GET');
+        else {
+          const id = url.searchParams.get('id') ?? '';
+          if (!id) {
+            sendJson(res, 400, { error: 'id da sala é obrigatório' });
+            return true;
+          }
+          res.writeHead(200, {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            Connection: 'keep-alive',
+          });
+          const initialLogs = deps.watcher.getLogs(id);
+          let folder = url.searchParams.get('path') ?? undefined;
+          if (!folder && id) folder = office.roomPath(id) ?? id;
+          const initialStatus = deps.watcher.getStatus(id, folder);
+          res.write(`event: init\ndata: ${JSON.stringify({ logs: initialLogs, status: initialStatus })}\n\n`);
+          const unsub = deps.watcher.subscribe(id, {
+            onData: (chunk) => {
+              res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+            },
+            onExit: (code) => {
+              res.write(`event: exit\ndata: ${JSON.stringify({ code })}\n\n`);
+            },
+          });
+          req.on('close', () => unsub());
+        }
+        return true;
+      }
     }
     if (path === '/api/stats' || path.startsWith('/api/stats/')) {
       handleStatsRoute(req, res, url, deps.stats, sendJson);

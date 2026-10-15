@@ -21,6 +21,7 @@ import { errMsg, log } from './log';
 import { NameStore } from './model/names';
 import { Office } from './model/office';
 import { RoomAliases } from './model/room-aliases';
+import { RoomWatcherManager } from './watcher/room-watcher';
 import { createPtyRoutes } from './http/pty';
 import { claudeBinFrom, isExecutableFile, loadPty, PtyManager, type ScreenFactory, type SpawnPty } from './pty/manager';
 import { loadHeadlessScreen } from './pty/screen';
@@ -314,6 +315,8 @@ if (squadOn) {
   }
 }
 
+const watcher = new RoomWatcherManager();
+
 const api = createApiHandler({
   renameRoom: (id, name) => {
     const path = office.roomPath(id);
@@ -323,6 +326,7 @@ const api = createApiHandler({
     return office.roomName(id);
   },
   opener: config.inDocker ? undefined : createOpener(),
+  watcher,
   office,
   hub,
   accounts,
@@ -521,6 +525,7 @@ function shutdown(signal: string): void {
   permissions?.stop();
   messages?.stop();
   ptys?.stopAll();
+  watcher.shutdown();
   updates.stop();
   names.flush();
   void closeVite?.();

@@ -9040,3 +9040,116 @@ html.is-replay #world {
     box-shadow: 0 -12px 24px rgba(5, 7, 12, 0.35);
   }
 }
+
+/* ==============================================================================
+   Pipeline Watcher — Barra de Ações na Sala & Modal de Logs
+   ============================================================================== */
+.ui-room-watcher-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 6px 0 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed var(--ui-line);
+}
+
+.ui-watcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 6px;
+}
+
+.ui-watcher-btn.is-running {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #4ade80;
+}
+
+.ui-watcher-modal {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 580px;
+  height: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 64px);
+  background: #0a0c12;
+  border: 1px solid var(--ui-line-strong, #334155);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  z-index: 999;
+  overflow: hidden;
+}
+
+.ui-watcher-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: #111420;
+  border-bottom: 1px solid var(--ui-line, #1e293b);
+  user-select: none;
+}
+
+.ui-watcher-modal__head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ui-watcher-modal__title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ui-text, #f1f5f9);
+}
+
+.ui-watcher-badge {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ui-text-muted, #94a3b8);
+}
+
+.ui-watcher-badge.is-running {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  font-weight: 600;
+}
+
+.ui-watcher-modal__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-watcher-modal__output {
+  flex: 1;
+  margin: 0;
+  padding: 12px 14px;
+  overflow-y: auto;
+  font-family: 'Cascadia Mono', Consolas, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #cbd5e1;
+  background: #0a0c12;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Cores ANSI para os logs do terminal */
+.ansi-bold { font-weight: bold; }
+.ansi-red { color: #f87171; }
+.ansi-green { color: #4ade80; }
+.ansi-yellow { color: #facc15; }
+.ansi-blue { color: #60a5fa; }
+.ansi-purple { color: #c084fc; }
+.ansi-cyan { color: #38bdf8; }
+

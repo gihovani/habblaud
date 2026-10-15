@@ -43,6 +43,7 @@ import { PermissionCard } from './permission';
 import { canRenameRoom } from './roomrename';
 import { accountChipLabel, accountProvider, CODEX_LIVE_HINT, codexApprovalLabel, providerOf } from './provider';
 import { ptyControllable } from './ptyapi';
+import { WatcherLogsModal } from './watcher-modal';
 import { createAgentRow, updateAgentRow } from './rows';
 import { SocialSection } from './social';
 import { TERMINAL_UNAVAILABLE_HINT, type TerminalControl } from './terminal';
@@ -852,6 +853,12 @@ class RoomView {
   private feedSec: ReturnType<typeof section>;
   private newBtn: HTMLButtonElement;
   private newMsg: HTMLElement;
+  private watcherBar: HTMLElement;
+  private watcherPlayBtn: HTMLButtonElement;
+  private watcherPlayText: HTMLElement;
+  private watcherLogsBtn: HTMLButtonElement;
+  private logsModal: WatcherLogsModal | null = null;
+  private watcherRunning = false;
 
   constructor(
     private ctx: UiContext,
@@ -905,6 +912,33 @@ class RoomView {
     const centerBtn = h('button', { class: 'ui-btn', type: 'button', title: tr('Levar a câmera até a sala'), on: { click: () => ctx.focusSelection() } });
     centerBtn.innerHTML = ICONS.center;
     centerBtn.append(h('span', { text: tr('Centralizar') }));
+
+    this.watcherPlayBtn = h('button', {
+      class: 'ui-btn ui-watcher-btn',
+      type: 'button',
+      title: tr('Iniciar ou parar o pipeline autônomo (scripts/pipeline-watcher.sh)'),
+      on: { click: () => this.toggleWatcher() },
+    }) as HTMLButtonElement;
+    this.watcherPlayBtn.innerHTML = ICONS.play;
+    this.watcherPlayText = h('span', { text: tr('Iniciar Watcher') });
+    this.watcherPlayBtn.append(this.watcherPlayText);
+
+    this.watcherLogsBtn = h('button', {
+      class: 'ui-btn ui-watcher-btn',
+      type: 'button',
+      title: tr('Ver output em tempo real do pipeline watcher'),
+      on: { click: () => this.openWatcherLogs() },
+    }) as HTMLButtonElement;
+    this.watcherLogsBtn.innerHTML = ICONS.terminalLog;
+    this.watcherLogsBtn.append(h('span', { text: tr('Ver Output') }));
+
+    this.watcherBar = h(
+      'div',
+      { class: 'ui-room-watcher-bar', hidden: true },
+      this.watcherPlayBtn,
+      this.watcherLogsBtn,
+    );
+
     this.gone = h('p', { class: 'ui-gone', text: tr('Esta sala foi fechada: todos os agentes saíram.'), hidden: true });
 
     const accsEl = h('div', { class: 'ui-acc-list' });
@@ -959,6 +993,7 @@ class RoomView {
       ),
       this.gone,
       h('div', { class: 'ui-status' }, accsEl, h('span', { class: 'ui-status__actions' }, this.newBtn, this.openFolderActionBtn, this.githubActionBtn, centerBtn)),
+      this.watcherBar,
       this.newMsg,
       this.agentsSec.el,
       this.tasksSec.el,
@@ -996,10 +1031,91 @@ class RoomView {
     });
   }
 
+  private getModal(): WatcherLogsModal {
+    if (!this.logsModal) {
+      this.logsModal = new WatcherLogsModal();
+    }
+    return this.logsModal;
+  }
+
+  private openWatcherLogs(): void {
+    const r = this.last;
+    if (!r) return;
+    this.getModal().open(r.id, r.name, r.path);
+  }
+
+  private toggleWatcher(): void {
+    const r = this.last;
+    if (!r?.path) return;
+    const endpoint = this.watcherRunning ? '/api/rooms/watcher/stop' : '/api/rooms/watcher/start';
+    this.watcherPlayBtn.disabled = true;
+    fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: r.id, path: r.path }),
+    })
+      .then((res) => res.json())
+      .then((data: { ok?: boolean; status?: { running?: boolean; pid?: number } }) => {
+        this.watcherPlayBtn.disabled = false;
+        if (data.ok) {
+          const running = !this.watcherRunning;
+          this.updateWatcherState(true, running, data.status?.pid);
+          if (running) {
+            this.openWatcherLogs();
+          }
+        }
+      })
+      .catch(() => {
+        this.watcherPlayBtn.disabled = false;
+      });
+  }
+
+  private updateWatcherState(available: boolean, running: boolean, pid?: number): void {
+    this.watcherRunning = running;
+    setHidden(this.watcherBar, !available);
+    if (!available) return;
+
+    if (running) {
+      this.watcherPlayBtn.innerHTML = ICONS.pause;
+      setText(this.watcherPlayText, tr('Parar Watcher'));
+      this.watcherPlayBtn.append(this.watcherPlayText);
+      this.watcherPlayBtn.classList.add('is-running');
+      setTitle(this.watcherPlayBtn, tr('Parar pipeline autônomo (rodando PID {0})', [String(pid ?? '')]));
+    } else {
+      this.watcherPlayBtn.innerHTML = ICONS.play;
+      setText(this.watcherPlayText, tr('Iniciar Watcher'));
+      this.watcherPlayBtn.append(this.watcherPlayText);
+      this.watcherPlayBtn.classList.remove('is-running');
+      setTitle(this.watcherPlayBtn, tr('Iniciar pipeline autônomo (scripts/pipeline-watcher.sh)'));
+    }
+    if (this.logsModal) {
+      this.logsModal.updateBadge(running, pid);
+    }
+  }
+
+  private checkWatcherStatus(): void {
+    const r = this.last;
+    if (!r?.path) {
+      setHidden(this.watcherBar, true);
+      return;
+    }
+    fetch(`/api/rooms/watcher/status?id=${encodeURIComponent(r.id)}&path=${encodeURIComponent(r.path)}`)
+      .then((res) => res.json())
+      .then((st: { available?: boolean; running?: boolean; pid?: number }) => {
+        if (this.last?.id !== r.id) return;
+        this.updateWatcherState(!!st.available, !!st.running, st.pid);
+      })
+      .catch(() => {
+        setHidden(this.watcherBar, true);
+      });
+  }
+
   open(id: string): void {
     if (this.id === id) return;
     this.id = id;
     this.last = null;
+    this.watcherRunning = false;
+    setHidden(this.watcherBar, true);
     this.agents.clear();
     this.tasks.clear();
     this.feed.clear();
@@ -1010,6 +1126,7 @@ class RoomView {
     if (live) this.last = live;
     const r = this.last;
     if (!r) return;
+    this.checkWatcherStatus();
     setText(this.name, r.name);
     setText(this.path, shortPath(r.path));
     setTitle(this.path, r.path);
