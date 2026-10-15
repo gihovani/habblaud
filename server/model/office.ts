@@ -31,6 +31,7 @@ import { hash32 } from '../../shared/hash';
 import { applyPermission } from '../permissions/registry';
 import type { NameStore, StoredCharacter } from './names';
 import { normalizeCwd, roomDisplayNames, SlotAllocator } from './rooms';
+import { getRoomGithubUrl } from './room-git';
 import { tr } from '../../shared/i18n';
 
 export const OFFLINE_GRACE_MS = 20_000;
@@ -961,6 +962,7 @@ export class Office {
         slot: this.slots.slotOf(id) ?? 0,
         seed: hash32(id),
         createdAt: r.createdAt,
+        githubUrl: getRoomGithubUrl(r.path),
       }))
       .sort((a, b) => a.slot - b.slot);
     // festa/alarme (eventos do GitHub): das salas reais ou do demo

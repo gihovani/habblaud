@@ -836,6 +836,10 @@ class RoomView {
   private name: HTMLElement;
   private renameBtn: HTMLButtonElement;
   private path: HTMLElement;
+  private openFolderBtn: HTMLButtonElement;
+  private githubBtn: HTMLAnchorElement;
+  private openFolderActionBtn: HTMLButtonElement;
+  private githubActionBtn: HTMLAnchorElement;
   private gone: HTMLElement;
   private accs: KeyedList<string>;
   private agents: KeyedList<AgentInfo>;
@@ -868,6 +872,36 @@ class RoomView {
       'ui-icon-btn--sm ui-room-hero__rename',
     );
     this.path = h('span', { class: 'ui-room-hero__path' });
+    this.openFolderBtn = iconButton(
+      ICONS.folder,
+      tr('Abrir pasta no computador'),
+      () => this.openFolder(),
+      'ui-icon-btn--sm',
+    );
+    this.githubBtn = h('a', {
+      class: 'ui-icon-btn ui-icon-btn--sm ui-room-hero__gh',
+      title: tr('Abrir repositório no GitHub'),
+      attrs: { 'aria-label': tr('Abrir no GitHub'), target: '_blank', rel: 'noopener noreferrer', hidden: 'true' },
+    }) as HTMLAnchorElement;
+    this.githubBtn.innerHTML = ICONS.github;
+
+    this.openFolderActionBtn = h('button', {
+      class: 'ui-btn',
+      type: 'button',
+      title: tr('Abre esta pasta no gerenciador de arquivos do computador'),
+      on: { click: () => this.openFolder() },
+    }) as HTMLButtonElement;
+    this.openFolderActionBtn.innerHTML = ICONS.folder;
+    this.openFolderActionBtn.append(h('span', { text: tr('Abrir pasta') }));
+
+    this.githubActionBtn = h('a', {
+      class: 'ui-btn',
+      title: tr('Abrir repositório no GitHub'),
+      attrs: { target: '_blank', rel: 'noopener noreferrer', hidden: 'true' },
+    }) as HTMLAnchorElement;
+    this.githubActionBtn.innerHTML = ICONS.github;
+    this.githubActionBtn.append(h('span', { text: 'GitHub' }));
+
     const centerBtn = h('button', { class: 'ui-btn', type: 'button', title: tr('Levar a câmera até a sala'), on: { click: () => ctx.focusSelection() } });
     centerBtn.innerHTML = ICONS.center;
     centerBtn.append(h('span', { text: tr('Centralizar') }));
@@ -911,10 +945,20 @@ class RoomView {
         'div',
         { class: 'ui-room-hero' },
         this.swatch,
-        h('div', { class: 'ui-hero__text' }, h('div', { class: 'ui-room-hero__title' }, this.name, this.renameBtn), h('span', { class: 'ui-copy-row' }, this.path, copyButton(() => this.last?.path ?? '', tr('Copiar caminho')))),
+        h(
+          'div',
+          { class: 'ui-hero__text' },
+          h('div', { class: 'ui-room-hero__title' }, this.name, this.renameBtn),
+          h('span', { class: 'ui-copy-row' },
+            this.path,
+            copyButton(() => this.last?.path ?? '', tr('Copiar caminho')),
+            this.openFolderBtn,
+            this.githubBtn,
+          ),
+        ),
       ),
       this.gone,
-      h('div', { class: 'ui-status' }, accsEl, h('span', { class: 'ui-status__actions' }, this.newBtn, centerBtn)),
+      h('div', { class: 'ui-status' }, accsEl, h('span', { class: 'ui-status__actions' }, this.newBtn, this.openFolderActionBtn, this.githubActionBtn, centerBtn)),
       this.newMsg,
       this.agentsSec.el,
       this.tasksSec.el,
@@ -924,6 +968,19 @@ class RoomView {
 
   get roomId(): string {
     return this.id;
+  }
+
+  /** Abre a pasta da sala localmente no computador. */
+  private openFolder(): void {
+    const r = this.last;
+    if (!r?.path) return;
+    fetch('/api/rooms/open', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: r.id, path: r.path }),
+    }).catch(() => {
+      // Ignora erro
+    });
   }
 
   /** Sessão nova na pasta da sala, na conta de quem estiver nela (ou na padrão). */
@@ -964,6 +1021,20 @@ class RoomView {
     setHidden(this.gone, !!live);
     setHidden(this.renameBtn, !live || !canRenameRoom(this.ctx, r.id));
     setHidden(this.newBtn, !this.pty.enabled);
+
+    const ghUrl = r.githubUrl;
+    if (ghUrl) {
+      setAttr(this.githubBtn, 'href', ghUrl);
+      setTitle(this.githubBtn, tr('Abrir repositório no GitHub ({0})', [ghUrl]));
+      setHidden(this.githubBtn, false);
+
+      setAttr(this.githubActionBtn, 'href', ghUrl);
+      setTitle(this.githubActionBtn, tr('Abrir repositório no GitHub ({0})', [ghUrl]));
+      setHidden(this.githubActionBtn, false);
+    } else {
+      setHidden(this.githubBtn, true);
+      setHidden(this.githubActionBtn, true);
+    }
 
     const snap = this.ctx.store.snapshot;
     const agents = (snap?.agents ?? []).filter((a) => a.roomId === r.id);

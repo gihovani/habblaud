@@ -322,6 +322,7 @@ const api = createApiHandler({
     office.refreshRoomNames();
     return office.roomName(id);
   },
+  opener: config.inDocker ? undefined : createOpener(),
   office,
   hub,
   accounts,

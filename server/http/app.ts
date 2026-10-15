@@ -85,6 +85,8 @@ export interface ApiDeps {
   files?: FileFetcher;
   /** Renomeia a sala (POST /api/rooms/rename {id, name}; vazio volta ao padrão). Devolve o nome em uso, ou undefined se a sala não existe. */
   renameRoom?: (id: string, name: string) => string | undefined;
+  /** Abre uma pasta ou arquivo local no sistema operacional (POST /api/rooms/open). */
+  opener?: (path: string) => Promise<{ ok: boolean; error?: string }>;
   /** Estatísticas do "Meu dia" (GET /api/stats, http/stats.ts). */
   stats?: DayStatsService;
   /** Verificação de versão nova no GitHub (GET /api/updates, POST /api/updates/check; updates/checker.ts). */
@@ -680,6 +682,26 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
             const name = deps.renameRoom?.(b.id, b.name);
             if (name === undefined) throw new HttpError(404, tr('sala não encontrada'));
             sendJson(res, 200, { name });
+          })
+          .catch((err) => fail(res, err));
+      return true;
+    }
+    if (path === '/api/rooms/open') {
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!trusted(req)) sendJson(res, 403, { error: denied(req, tr('abrir pasta só pelo próprio computador (http://localhost)')) });
+      else
+        readJson(req)
+          .then(async (body) => {
+            const b = body as { id?: unknown; path?: unknown };
+            let folder = typeof b?.path === 'string' && b.path ? b.path : undefined;
+            if (!folder && typeof b?.id === 'string') {
+              folder = office.roomPath(b.id) ?? b.id;
+            }
+            if (!folder) throw new HttpError(400, tr('id ou path da sala é obrigatório'));
+            if (!deps.opener) throw new HttpError(500, tr('abertura de pastas não configurada'));
+            const r = await deps.opener(folder);
+            if (!r.ok) throw new HttpError(500, r.error ?? tr('falha ao abrir pasta'));
+            sendJson(res, 200, { ok: true });
           })
           .catch((err) => fail(res, err));
       return true;

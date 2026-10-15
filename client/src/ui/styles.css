@@ -2502,6 +2502,17 @@
   justify-content: flex-start;
 }
 
+a.ui-btn {
+  text-decoration: none;
+}
+
+.ui-room-hero__gh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .ui-acc-list {
   display: flex;
   flex-wrap: wrap;

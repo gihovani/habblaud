@@ -208,6 +208,8 @@ export interface RoomInfo {
   createdAt: number;
   /** Efeito visual temporário na sala (eventos do GitHub detectados nos transcripts; ver shared/github.ts). */
   effect?: RoomEffect;
+  /** URL do repositório no GitHub (ex: https://github.com/owner/repo), quando a pasta for um repositório git. */
+  githubUrl?: string;
 }
 
 /**
