@@ -2617,4 +2617,5 @@ export const ES: Readonly<Record<string, string>> = {
   "ativo": "activo",
   "As sessões e atividades do Antigravity são lidas diretamente de ~/.gemini/antigravity-cli/brain.": "Las sesiones y actividades de Antigravity se leen directamente de ~/.gemini/antigravity-cli/brain.",
   "Como o Antigravity funciona no Habblaud (abre a ajuda em “Antigravity”)": "Cómo funciona Antigravity en Habblaud (abre la ayuda en “Antigravity”)",
+  "eventos do Antigravity só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)": "Los eventos de Antigravity solo se aceptan desde este mismo equipo (http://localhost o http://127.0.0.1)",
 };

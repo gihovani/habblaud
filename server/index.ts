@@ -41,6 +41,7 @@ import { discoverKiroDir } from './sources/kiro/accounts';
 import { KiroSource } from './sources/kiro/source';
 import { discoverAntigravityDir } from './sources/antigravity/accounts';
 import { AntigravitySource } from './sources/antigravity/source';
+import type { AntigravityLive } from './sources/antigravity/live';
 import { createBuildReader } from './build';
 import { UpdateChecker } from './updates/checker';
 import { tr } from '../shared/i18n';
@@ -124,6 +125,7 @@ if (antigravity) agents.add(antigravity);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
 // (CodexLive); sem ela (nenhuma pasta do Codex ou HABBLAUD_CODEX=0) a rota responde {ok: false}.
 const codexLive: CodexLive | undefined = codex;
+const antigravityLive: AntigravityLive | undefined = antigravity;
 late.office = office;
 late.agents = agents;
 // Página que pode responder pelo escritório: Host local na porta local; na remota, só com permissions liberado.
@@ -318,6 +320,8 @@ const api = createApiHandler({
     return recentFolders(history ? await history.list().catch(() => []) : [], rooms);
   },
   codexLive,
+  antigravityEvents: config.antigravity,
+  antigravityLive,
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,

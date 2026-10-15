@@ -206,6 +206,7 @@ async function start(allow: RemoteFeature[] = ['permissions']): Promise<Harness>
     version: '9.9.9',
     inDocker: true,
     terminal: true,
+    antigravityEvents: true,
     spawn,
     permissions: (req, res, path) => {
       req.resume();
@@ -312,6 +313,7 @@ describe('porta remota', () => {
       ['POST', '/api/mod/inbox/ack'],
       ['POST', '/api/codex/bridge/poll'],
       ['POST', '/api/codex/events'],
+      ['POST', '/api/antigravity/events'],
       ['POST', '/api/host/files/poll'],
       ['POST', '/api/host/spawn/poll'],
     ];
