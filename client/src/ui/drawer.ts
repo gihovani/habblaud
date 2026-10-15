@@ -221,6 +221,7 @@ class AgentView {
   private termWhyTimer: ReturnType<typeof setTimeout> | null = null;
   private alert: HTMLElement;
   private alertText: HTMLElement;
+  private alertAction: HTMLElement;
   /**
    * Perguntas e opções do AskUserQuestion pendente, só para leitura: com o pedido no escritório (hook de
    * permissão), quem aparece é o cartão de resposta, no lugar do alerta.
@@ -324,13 +325,19 @@ class AgentView {
     this.alertText = h('p', { class: 'ui-alert__text' });
     this.alertQuestions = h('div', { class: 'ui-ask', hidden: true });
     this.alertAnswerHint = h('p', { class: 'ui-ask__answer-hint', hidden: true, text: tr('Com o plugin habblaud-permissoes (npm run mod:install), dá para responder as perguntas por aqui.') });
+    this.alertAction = h('a', {
+      class: 'ui-btn ui-btn--sm',
+      style: 'margin-top: 8px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none;',
+      hidden: true,
+      attrs: { target: '_blank', rel: 'noopener noreferrer' },
+    });
     const alertIcon = h('span', { class: 'ui-alert__icon', attrs: { 'aria-hidden': 'true' } });
     alertIcon.innerHTML = ICONS.hand;
     this.alert = h(
       'div',
       { class: 'ui-alert', role: 'alert', hidden: true },
       alertIcon,
-      h('div', {}, h('strong', { class: 'ui-alert__title', text: tr('Precisa de você') }), this.alertText, this.alertQuestions, this.alertAnswerHint),
+      h('div', {}, h('strong', { class: 'ui-alert__title', text: tr('Precisa de você') }), this.alertText, this.alertQuestions, this.alertAction, this.alertAnswerHint),
     );
 
     // Esperando o shell: caixa de status (com a fase da espera no escritório) e a lista de comandos rodando.
@@ -576,6 +583,32 @@ class AgentView {
       // Codex: "Vá ao Codex (Conta X)"; sem repetir quando a conta já se chama "Codex".
       const where = codex ? tr('ao Codex{0}', [/codex/i.test(accName) ? '' : ` (${accName})`]) : tr('ao terminal da {0}', [accName]);
       setText(this.alertText, tr('Vá {0} em {1} para responder{2}', [where, room?.name ?? tr('seu projeto'), a.waitingFor ? `: ${a.waitingFor}` : '.']));
+
+      // Extrai link do GitHub se for do AgentSquad ou se mencionar issue/PR
+      let githubUrl = '';
+      let actionLabel = '↗ Abrir no GitHub';
+
+      const repoFromAccount = a.account.startsWith('agentsquad:') ? a.account.slice('agentsquad:'.length) : '';
+      const textToScan = `${a.activity?.text ?? ''} ${a.activity?.detail ?? ''} ${a.waitingFor ?? ''}`;
+      const issueMatch = textToScan.match(/#(\d+)/);
+
+      if (repoFromAccount && issueMatch) {
+        githubUrl = `https://github.com/${repoFromAccount}/issues/${issueMatch[1]}`;
+        actionLabel = `↗ Abrir #${issueMatch[1]} no GitHub`;
+      } else if (repoFromAccount) {
+        githubUrl = `https://github.com/${repoFromAccount}/issues`;
+        actionLabel = `↗ Abrir Issues no GitHub`;
+      }
+
+      if (githubUrl) {
+        (this.alertAction as HTMLAnchorElement).href = githubUrl;
+        setText(this.alertAction, actionLabel);
+        setHidden(this.alertAction, false);
+      } else {
+        setHidden(this.alertAction, true);
+      }
+    } else {
+      setHidden(this.alertAction, true);
     }
     // Perguntas do AskUserQuestion (só leitura): o Codex não pergunta pelo escritório.
     const asking = waiting && !codex && a.activity?.kind === 'ask' ? a.activity : undefined;
