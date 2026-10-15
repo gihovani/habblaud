@@ -5,7 +5,9 @@ import type { Provider, SourceInfo } from '../../../shared/types';
 import type { AccountsService } from '../../accounts/service';
 import type { Office } from '../../model/office';
 import type { AgentSource } from '../source';
+import type { TerminalParser } from '../terminal';
 import { detectAntigravityAccount, discoverAntigravityDir } from './accounts';
+import { AntigravityTerminalParser } from './terminal';
 import { AntigravityWatcher } from './watcher';
 
 export interface AntigravitySourceOptions {
@@ -23,11 +25,13 @@ export class AntigravitySource implements AgentSource {
   private readonly office: Office;
   private readonly dir: string;
   private readonly brainDir: string;
+  private readonly env?: NodeJS.ProcessEnv;
   private readonly watcher: AntigravityWatcher;
 
   constructor(opts: AntigravitySourceOptions) {
     this.accounts = opts.accounts;
     this.office = opts.office;
+    this.env = opts.env;
     const baseDir = opts.dir ?? discoverAntigravityDir(opts.env, opts.home) ?? join(process.env.HOME || '', '.gemini', 'antigravity-cli');
     this.dir = baseDir;
 
@@ -45,7 +49,7 @@ export class AntigravitySource implements AgentSource {
       this.accounts.setProviderAccounts('antigravity', [
         {
           dir: this.dir,
-          detected: detectAntigravityAccount(this.dir),
+          detected: detectAntigravityAccount(this.dir, this.env),
         },
       ]);
     }
@@ -71,5 +75,9 @@ export class AntigravitySource implements AgentSource {
 
   transcriptPathOf(agentId: string): string | undefined {
     return this.watcher.transcriptPathOf(agentId);
+  }
+
+  terminalParser(agentId: string): TerminalParser | undefined {
+    return new AntigravityTerminalParser();
   }
 }

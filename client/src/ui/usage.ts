@@ -12,7 +12,7 @@ import type { UiContext } from './context';
 import { h, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import { FIVE_HOURS_MS, relativeTime, usageLevel, usageWindowView, WEEK_MS, type UsageWindowView } from './format';
 import { ICONS } from './icons';
-import { isCodex, isKiro } from './provider';
+import { isAntigravity, isCodex, isKiro } from './provider';
 import { usageRowFits } from './usage-row';
 import { createAccountChip, createProviderTag, updateAccountChip, updateProviderTag } from './widgets';
 import { tr } from '../../../shared/i18n';
@@ -174,11 +174,12 @@ export function showsUsageAge(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pr
   return state === 'stale' || (isCodex(a) && state !== 'empty');
 }
 
-/** Linha embaixo do nome: e-mail; no Codex e Kiro (sem e-mail), o plano; nas outras, a pasta. */
+/** Linha embaixo do nome: e-mail; no Codex, Kiro e Antigravity (sem e-mail), o plano; nas outras, a pasta. */
 export function usageSubtitle(a: Pick<AccountInfo, 'email' | 'plan' | 'configDir' | 'provider'>): string {
   if (a.email) return a.email;
   if (isCodex(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Codex';
   if (isKiro(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Kiro';
+  if (isAntigravity(a)) return a.plan ? tr('plano {0}', [a.plan]) : 'Antigravity';
   return a.configDir;
 }
 
@@ -188,6 +189,7 @@ export function usageMessage(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pro
   if (state === 'noquota') return [tr('sem cota'), tr('sem cota')];
   if (isCodex(a)) return [tr('sem dados ainda'), tr('sem dados')];
   if (isKiro(a)) return [tr('consultar via /usage'), tr('/usage')];
+  if (isAntigravity(a)) return [tr('sessão ativa no terminal'), tr('ativo')];
   return [tr('sem dados de uso'), tr('sem dados')];
 }
 
@@ -195,6 +197,12 @@ export function usageMessage(a: Pick<AccountInfo, 'usage' | 'usageStatus' | 'pro
 export function kiroUsageNote(a: Pick<AccountInfo, 'provider'>): string {
   if (!isKiro(a)) return '';
   return tr('Consulte créditos e limites no terminal do Kiro CLI com /usage');
+}
+
+/** Explicação do cartão de uma conta do Antigravity (dica); '' nas outras. */
+export function antigravityUsageNote(a: Pick<AccountInfo, 'provider'>): string {
+  if (!isAntigravity(a)) return '';
+  return tr('As sessões e atividades do Antigravity são lidas diretamente de ~/.gemini/antigravity-cli/brain.');
 }
 
 /** Explicação do cartão de uma conta do Codex (dica); '' nas outras. */
@@ -346,12 +354,13 @@ export class UsageCards {
     const now = this.ctx.now();
     const codex = isCodex(a);
     const kiro = isKiro(a);
+    const antigravity = isAntigravity(a);
     updateAccountChip(r.chip, a);
     setStyleVar(card, '--acc', a.color);
     setText(r.name, a.name);
-    updateProviderTag(r.prov, codex ? 'codex' : kiro ? 'kiro' : 'claude', a.name);
+    updateProviderTag(r.prov, codex ? 'codex' : kiro ? 'kiro' : antigravity ? 'antigravity' : 'claude', a.name);
     setText(r.email, usageSubtitle(a));
-    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : kiro ? ' (Kiro)' : '']));
+    setAttr(card, 'aria-label', tr('{0}{1}: uso do plano', [a.name, codex ? ' (Codex)' : kiro ? ' (Kiro)' : antigravity ? ' (Antigravity)' : '']));
 
     const usage = a.usage;
     const state = cardState(a);
@@ -392,17 +401,19 @@ export class UsageCards {
     setHidden(r.msg, state !== 'empty' && state !== 'noquota');
     setHidden(r.how, state === 'noquota');
     r.msg.classList.toggle('is-noquota', state === 'noquota');
-    setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : kiro ? kiroUsageNote(a) : '');
-    setText(r.howLong, codex || kiro ? tr('Como funciona') : tr('Como ativar'));
-    setText(r.howShort, codex || kiro ? tr('Saber') : tr('Ativar'));
-    r.how.dataset.help = codex ? 'codex' : kiro ? 'kiro' : 'usage';
+    setTitle(r.msg, state === 'noquota' ? codexUsageNote(a, now) : kiro ? kiroUsageNote(a) : antigravity ? antigravityUsageNote(a) : '');
+    setText(r.howLong, codex || kiro || antigravity ? tr('Como funciona') : tr('Como ativar'));
+    setText(r.howShort, codex || kiro || antigravity ? tr('Saber') : tr('Ativar'));
+    r.how.dataset.help = codex ? 'codex' : kiro ? 'kiro' : antigravity ? 'antigravity' : 'usage';
     setTitle(
       r.how,
       codex
         ? tr('Como o uso do Codex chega ao Habblaud (abre a ajuda em “Codex”)')
         : kiro
           ? tr('Como o Kiro funciona no Habblaud (abre a ajuda em “Kiro”)')
-          : tr('Como mostrar o uso desta conta (abre a ajuda em “Contas e uso”)'),
+          : antigravity
+            ? tr('Como o Antigravity funciona no Habblaud (abre a ajuda em “Antigravity”)')
+            : tr('Como mostrar o uso desta conta (abre a ajuda em “Contas e uso”)'),
     );
     this.updateTip(r, a, state, five, week, now);
   }
@@ -410,11 +421,13 @@ export class UsageCards {
   private updateTip(r: CardRefs, a: AccountInfo, state: CardState, five: UsageWindowView | null, week: UsageWindowView | null, now: number): void {
     const codex = isCodex(a);
     const kiro = isKiro(a);
-    const provTag = codex && !/codex/i.test(a.name) ? ' · Codex' : kiro && !/kiro/i.test(a.name) ? ' · Kiro' : '';
+    const antigravity = isAntigravity(a);
+    const provTag = codex && !/codex/i.test(a.name) ? ' · Codex' : kiro && !/kiro/i.test(a.name) ? ' · Kiro' : antigravity && !/antigravity/i.test(a.name) ? ' · Antigravity' : '';
     setText(r.tipTitle, `${a.name}${provTag}${a.plan ? tr(' · plano {0}', [a.plan]) : ''}`);
     const rows: [string, string][] = [];
     if (codex) rows.push([tr('Ferramenta'), 'Codex']);
     if (kiro) rows.push([tr('Ferramenta'), 'Kiro']);
+    if (antigravity) rows.push([tr('Ferramenta'), 'Antigravity']);
     if (a.email) rows.push(['E-mail', a.email]);
     if (a.organization) rows.push([tr('Organização'), a.organization]);
     if (a.plan) rows.push([tr('Plano'), a.plan]);
@@ -424,9 +437,9 @@ export class UsageCards {
     if (u && (u.fiveHour || u.sevenDay)) {
       rows.push([tr('Sessão de 5 h'), five?.summary ?? '—']);
       rows.push([tr('Semana'), week?.summary ?? '—']);
-      // Opus e Sonnet são janelas do Claude: no Codex e Kiro não existem.
-      const opus = codex || kiro ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
-      const sonnet = codex || kiro ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
+      // Opus e Sonnet são janelas do Claude: no Codex, Kiro e Antigravity não existem.
+      const opus = codex || kiro || antigravity ? null : usageWindowView(u.sevenDayOpus, u.fetchedAt, now, WEEK_MS);
+      const sonnet = codex || kiro || antigravity ? null : usageWindowView(u.sevenDaySonnet, u.fetchedAt, now, WEEK_MS);
       if (opus) rows.push([tr('Opus (semana)'), opus.summary]);
       if (sonnet) rows.push([tr('Sonnet (semana)'), sonnet.summary]);
     }
@@ -449,6 +462,15 @@ export class UsageCards {
     // Kiro: explicação sobre como consultar o uso pelo Kiro CLI, sem o setup do Claude Code.
     if (kiro) {
       const note = tr('Para consultar créditos e limites de uso da conta do Kiro, digite /usage no terminal do Kiro CLI.');
+      setText(r.tipNote, note);
+      setHidden(r.tipNote, false);
+      setHidden(r.tipSetup, true);
+      return;
+    }
+
+    // Antigravity: explicação sobre funcionamento pelo transcript
+    if (antigravity) {
+      const note = tr('As sessões e atividades do Antigravity são lidas diretamente de ~/.gemini/antigravity-cli/brain.');
       setText(r.tipNote, note);
       setHidden(r.tipNote, false);
       setHidden(r.tipSetup, true);

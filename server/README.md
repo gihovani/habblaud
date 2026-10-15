@@ -367,6 +367,8 @@ do Codex levam `provider: 'codex'` (ausente = Claude Code). Ids: `<conta>:<threa
 | `HABBLAUD_CODEX_BIN` | `codex` do PATH | binário do Codex para o `codex queue` (modo Node e `npm run codex:bridge`) |
 | `HABBLAUD_KIRO` | ligado | `0` desliga a fonte do Kiro |
 | `HABBLAUD_KIRO_PLAN` | — | nome do plano da conta do Kiro para exibição no escritório (ex.: `PRO MAX`); também aceita `KIRO_PLAN` ou o arquivo `~/.kiro/plan` |
+| `HABBLAUD_ANTIGRAVITY` | ligado | `0` desliga a fonte do Antigravity |
+| `HABBLAUD_ANTIGRAVITY_PLAN` | — | nome do plano da conta do Antigravity (ex.: `Gemini Pro`); também aceita `ANTIGRAVITY_PLAN` |
 | `HABBLAUD_MENSAGENS` | ligado (com o terminal) | `0`, `false`, `off` ou `no` desligam só as mensagens pelo escritório |
 | `HABBLAUD_CLAUDE_DIRS` | — | config dirs separados por vírgula; substitui a detecção (`~/.claude*` com `projects/` ou `sessions/` + `CLAUDE_CONFIG_DIR`) |
 | `HABBLAUD_DATA_DIR` | `~/.habblaud` (Docker: `/data`) | estado do Habblaud (nomes e personagens dos projetos persistidos em `names.json`, linha do tempo em `timeline/`, estatísticas do Meu dia em `stats/`, última verificação de versão em `updates.json`) |

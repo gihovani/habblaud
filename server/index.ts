@@ -118,7 +118,7 @@ if (codex) agents.add(codex);
 const kiroDir = config.kiro ? discoverKiroDir(process.env, config.home) : undefined;
 const kiro = kiroDir ? new KiroSource({ accounts, office, dir: kiroDir, home: config.home, env: process.env, inDocker: config.inDocker }) : undefined;
 if (kiro) agents.add(kiro);
-const antigravityDir = discoverAntigravityDir(process.env, config.home);
+const antigravityDir = config.antigravity ? discoverAntigravityDir(process.env, config.home) : undefined;
 const antigravity = antigravityDir ? new AntigravitySource({ accounts, office, dir: antigravityDir, home: config.home, env: process.env }) : undefined;
 if (antigravity) agents.add(antigravity);
 // Eventos dos hooks do Codex (POST /api/codex/events, mod/habblaud-codex/hook.mjs): vão para a fonte do Codex ao vivo
