@@ -55,6 +55,7 @@ export function createAgentSquad(opts: CreateAgentSquadOptions = {}): AgentSquad
   const engine = new SquadEngine({
     providers,
     pollIntervalMs: config.pollIntervalMs,
+    repos: config.repos,
   });
 
   let bridge: HabblaudBridge | undefined;

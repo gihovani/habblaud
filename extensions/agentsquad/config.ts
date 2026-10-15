@@ -30,7 +30,7 @@ export function loadAgentSquadConfig(env: NodeJS.ProcessEnv = process.env): Agen
   const repoPaths = parseRepoPaths(env.AGENTSQUAD_REPO_PATHS);
 
   return {
-    repos: repos.length > 0 ? repos : ['gihovani/zypa'],
+    repos: repos.length > 0 ? repos : ['GG2COMBR/zypa'],
     pollIntervalMs: isNaN(pollIntervalMs) ? 10_000 : pollIntervalMs,
     githubToken,
     repoPaths,

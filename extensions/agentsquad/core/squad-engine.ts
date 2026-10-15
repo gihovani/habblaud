@@ -20,11 +20,13 @@ import {
 export interface SquadEngineOptions {
   providers: SquadProvider[];
   pollIntervalMs?: number;
+  repos?: string[];
 }
 
 export class SquadEngine {
   private readonly providers: SquadProvider[];
   private readonly pollIntervalMs: number;
+  private readonly configuredRepos: string[];
   private pollTimer?: NodeJS.Timeout;
   private running = false;
 
@@ -36,6 +38,7 @@ export class SquadEngine {
   constructor(opts: SquadEngineOptions) {
     this.providers = opts.providers;
     this.pollIntervalMs = opts.pollIntervalMs ?? 10_000;
+    this.configuredRepos = opts.repos || [];
   }
 
   async start(): Promise<void> {
@@ -163,7 +166,7 @@ export class SquadEngine {
     const agentsList = Array.from(this.agents.values());
     const alertsList = Array.from(this.alerts.values());
 
-    const reposSet = new Set<string>();
+    const reposSet = new Set<string>(this.configuredRepos);
     for (const t of tasksList) reposSet.add(t.repo);
 
     const byStage: Record<PipelineStage, number> = {
@@ -185,6 +188,7 @@ export class SquadEngine {
       'task-master': 0,
       backend: 0,
       frontend: 0,
+      'ui-engineer': 0,
       devops: 0,
       infra: 0,
       revisor: 0,

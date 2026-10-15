@@ -8,6 +8,7 @@ export const ROLE_METADATA: Record<AgentRole, { roleTitle: string; badgeIcon: st
   'task-master': { roleTitle: 'Task-Master (Tech Lead)', badgeIcon: '📋', themeColor: '#8b5cf6' },
   backend: { roleTitle: 'Dev Backend', badgeIcon: '💻', themeColor: '#10b981' },
   frontend: { roleTitle: 'Dev Frontend', badgeIcon: '🎨', themeColor: '#f59e0b' },
+  'ui-engineer': { roleTitle: 'Dev UI Engineer', badgeIcon: '✨', themeColor: '#22d3ee' },
   devops: { roleTitle: 'Engenheiro DevOps', badgeIcon: '⚙️', themeColor: '#64748b' },
   infra: { roleTitle: 'Engenheiro Infra', badgeIcon: '☁️', themeColor: '#0284c7' },
   revisor: { roleTitle: 'Revisor de Código', badgeIcon: '🔍', themeColor: '#ec4899' },
@@ -58,6 +59,10 @@ export function resolveAgentRole(labels: string[], stage: PipelineStage): AgentR
     if (clean.startsWith('agent:')) {
       const rolePart = clean.replace('agent:', '').trim() as AgentRole;
       if (rolePart in ROLE_METADATA) return rolePart;
+    }
+    // Suporte a labels diretas utilizadas no Zypa (ex: frontend, backend, infra, devops)
+    if (clean in ROLE_METADATA && clean !== 'human') {
+      return clean as AgentRole;
     }
   }
   return STAGE_DEFAULT_ROLE[stage] ?? 'orchestrator';

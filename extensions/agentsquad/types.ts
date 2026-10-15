@@ -20,6 +20,7 @@ export type AgentRole =
   | 'task-master'      // Tech Lead (Spec-Driven Design & contratos)
   | 'backend'          // Dev Backend (Node/Fastify/Prisma/PostgreSQL)
   | 'frontend'         // Dev Frontend (Next.js/React/Tailwind/UI)
+  | 'ui-engineer'      // Dev Frontend Vanilla / UI responsiva
   | 'devops'           // Engenheiro DevOps (CI/CD, Docker, scripts)
   | 'infra'            // Engenheiro Infraestrutura (Cloud, CDN, SSL)
   | 'revisor'          // Code Reviewer Sênior (revisão de PRs)

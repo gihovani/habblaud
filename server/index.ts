@@ -296,6 +296,7 @@ if (squadOn) {
       office,
       config: {
         repoPaths: {
+          'GG2COMBR/zypa': join(config.rootDir, '../zypa'),
           'gihovani/zypa': join(config.rootDir, '../zypa'),
         },
       },
