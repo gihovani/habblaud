@@ -52,7 +52,11 @@ export class WatcherLogsModal {
 
     this.copyBtn = iconButton(ICONS.copy, tr('Copiar logs'), () => this.copyLogs());
     this.clearBtn = iconButton(ICONS.pencil, tr('Limpar tela'), () => this.clearLogs());
-    this.closeBtn = iconButton(ICONS.close, tr('Fechar'), () => this.close());
+    this.closeBtn = iconButton(ICONS.close, tr('Fechar'), (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.close();
+    });
 
     const header = h(
       'div',
@@ -69,13 +73,21 @@ export class WatcherLogsModal {
       header,
       this.outputEl,
     );
+    this.el.style.display = 'none';
 
     this.movable = new Movable(this.el, header, {
       key: 'habblaud:watcher-modal',
       enabled: () => window.innerWidth > 640,
     });
 
-    document.body.append(this.el);
+    const rootEl = document.querySelector('.ui-root') ?? document.getElementById('ui-app') ?? document.body;
+    rootEl.append(this.el);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.el.hidden && this.el.style.display !== 'none') {
+        this.close();
+      }
+    });
   }
 
   private toggleAutoScroll(): void {
@@ -114,6 +126,7 @@ export class WatcherLogsModal {
     this.currentRoomId = roomId;
     setText(this.titleEl, `Watcher — ${roomName}`);
     setHidden(this.el, false);
+    this.el.style.display = 'flex';
 
     // Desconecta SSE anterior
     this.disconnect();
@@ -174,6 +187,7 @@ export class WatcherLogsModal {
 
   close(): void {
     setHidden(this.el, true);
+    this.el.style.display = 'none';
     this.disconnect();
   }
 

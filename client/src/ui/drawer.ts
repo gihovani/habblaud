@@ -1060,9 +1060,6 @@ class RoomView {
         if (data.ok) {
           const running = !this.watcherRunning;
           this.updateWatcherState(true, running, data.status?.pid);
-          if (running) {
-            this.openWatcherLogs();
-          }
         }
       })
       .catch(() => {
