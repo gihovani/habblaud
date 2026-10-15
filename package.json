@@ -44,6 +44,8 @@
     "antigravity:install": "tsx scripts/antigravity-install.ts install",
     "antigravity:uninstall": "tsx scripts/antigravity-install.ts uninstall",
     "antigravity:status": "tsx scripts/antigravity-install.ts status",
+    "agentsquad:status": "tsx extensions/agentsquad/cli.ts status",
+    "agentsquad:demo": "tsx extensions/agentsquad/cli.ts demo",
     "remote:setup": "tsx scripts/remote-setup.ts",
     "remote:mdns": "tsx scripts/remote-mdns.ts",
     "release": "tsx scripts/release.ts"

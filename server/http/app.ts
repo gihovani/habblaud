@@ -93,6 +93,10 @@ export interface ApiDeps {
     check(opts: { manual?: boolean }): Promise<UpdateStatus>;
   };
   /**
+   * Extensão AgentSquad (/api/agentsquad/*): visualização e orquestração de squads autônomos.
+   */
+  squad?: (req: IncomingMessage, res: ServerResponse, path: string) => boolean;
+  /**
    * Porta remota com login (http/remote.ts): `is` diz se a requisição chegou por ela (já autenticada); `allows`, o que
    * HABBLAUD_REMOTE_ALLOW libera. Requisição remota nunca vale pelo Host: só pelo que `allows` liberar.
    */
@@ -489,6 +493,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       } else handleAntigravityEvent(req, res, { live: deps.antigravityLive }).catch((err) => fail(res, err));
       return true;
     }
+    if (deps.squad && deps.squad(req, res, path)) return true;
     if (path === '/api/spawn' || path.startsWith('/api/spawn/')) {
       // Abre uma sessão nova no app do Claude: roda código no computador, então a mesma trava das mensagens.
       const spawn = deps.spawn;

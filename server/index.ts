@@ -286,6 +286,27 @@ const ticker = setInterval(() => {
   }
 }, 250);
 
+// AgentSquad: monitoramento e orquestração de squads de desenvolvimento autônomo (extensions/agentsquad)
+const squadOn = process.env.HABBLAUD_AGENTSQUAD !== '0';
+let squadHandler: ((req: http.IncomingMessage, res: http.ServerResponse, path: string) => boolean) | undefined;
+if (squadOn) {
+  try {
+    const { createAgentSquad, createSquadHttpHandler } = await import('../extensions/agentsquad/index');
+    const squad = createAgentSquad({
+      office,
+      config: {
+        repoPaths: {
+          'gihovani/zypa': join(config.rootDir, '../zypa'),
+        },
+      },
+    });
+    await squad.start();
+    squadHandler = createSquadHttpHandler(squad);
+  } catch (err) {
+    log.warnOnce('agentsquad-init', `AgentSquad: falha ao inicializar (${errMsg(err)}).`);
+  }
+}
+
 const api = createApiHandler({
   renameRoom: (id, name) => {
     const path = office.roomPath(id);
@@ -322,6 +343,7 @@ const api = createApiHandler({
   codexLive,
   antigravityEvents: config.antigravity,
   antigravityLive,
+  squad: squadHandler,
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
