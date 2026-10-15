@@ -292,12 +292,18 @@ let squadHandler: ((req: http.IncomingMessage, res: http.ServerResponse, path: s
 if (squadOn) {
   try {
     const { createAgentSquad, createSquadHttpHandler } = await import('../extensions/agentsquad/index');
+    const repos = process.env.AGENTSQUAD_REPOS
+      ? process.env.AGENTSQUAD_REPOS.split(',').map((r) => r.trim()).filter(Boolean)
+      : ['GG2COMBR/zypa', 'Henry-Schein-Brasil/hsb-orcamento', 'Henry-Schein-Brasil/hsb-webview'];
     const squad = createAgentSquad({
       office,
       config: {
+        repos,
         repoPaths: {
           'GG2COMBR/zypa': join(config.rootDir, '../zypa'),
           'gihovani/zypa': join(config.rootDir, '../zypa'),
+          'Henry-Schein-Brasil/hsb-orcamento': join(config.rootDir, '../hsb-orcamento'),
+          'Henry-Schein-Brasil/hsb-webview': join(config.rootDir, '../hsb-webview'),
         },
       },
     });

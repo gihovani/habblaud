@@ -60,7 +60,9 @@ export function resolveAgentRole(labels: string[], stage: PipelineStage): AgentR
       const rolePart = clean.replace('agent:', '').trim() as AgentRole;
       if (rolePart in ROLE_METADATA) return rolePart;
     }
-    // Suporte a labels diretas utilizadas no Zypa (ex: frontend, backend, infra, devops)
+    // Suporte a labels diretas utilizadas no Zypa e HSB (ex: frontend, backend, infra, devops, interface, tester)
+    if (clean === 'interface') return 'frontend';
+    if (clean === 'tester') return 'qa';
     if (clean in ROLE_METADATA && clean !== 'human') {
       return clean as AgentRole;
     }
@@ -77,6 +79,19 @@ export function resolvePipelineStage(labels: string[]): PipelineStage {
       if (STAGE_ORDER.includes(stagePart)) return stagePart;
     }
   }
+
+  // Suporte a labels legadas ou alternativas comuns (ex: hsb-orcamento / Kiro)
+  for (const label of labels) {
+    const clean = label.toLowerCase().trim();
+    if (clean === 'needs-refinement') return 'refining';
+    if (clean === 'refined') return 'specifying';
+    if (clean === 'ready' || clean === 'in-progress') return 'ready-dev';
+    if (clean === 'in-review') return 'in-review';
+    if (clean === 'tested') return 'testing';
+    if (clean === 'ready-release') return 'ready-release';
+    if (clean === 'done' || clean === 'closed') return 'done';
+  }
+
   return 'inbox';
 }
 

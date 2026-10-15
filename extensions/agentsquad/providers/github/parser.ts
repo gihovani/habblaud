@@ -82,10 +82,14 @@ export function parseGitHubTasks(repo: string, issues: RawGitHubIssue[], prs: Ra
   }
 
   const tasks: SquadTask[] = [];
+  const processedPrNumbers = new Set<number>();
 
   for (const issue of issues) {
     const labels = (issue.labels || []).map((l) => l.name);
     const linkedPr = prMap.get(issue.number);
+    if (linkedPr) {
+      processedPrNumbers.add(linkedPr.number);
+    }
 
     let stage = resolvePipelineStage(labels);
     // Se há um PR aberto e o estágio ainda é ready-dev, promove para in-review ou testing
@@ -118,6 +122,38 @@ export function parseGitHubTasks(repo: string, issues: RawGitHubIssue[], prs: Ra
     };
 
     tasks.push(task);
+  }
+
+  // Adiciona PRs avulsos (que não fecham nenhuma issue aberta no momento)
+  for (const pr of prs) {
+    if (processedPrNumbers.has(pr.number)) continue;
+    const labels = (pr.labels || []).map((l) => l.name);
+    let stage = resolvePipelineStage(labels);
+    if (stage === 'inbox' || stage === 'ready-dev') {
+      stage = pr.reviewDecision === 'APPROVED' ? 'testing' : 'in-review';
+    }
+    const assignedRole = resolveAgentRole(labels, stage);
+    const questions = extractPendingQuestions(pr.body);
+    const needsHuman = checkNeedsHuman(stage, labels, questions);
+
+    tasks.push({
+      id: `${repo}:pr-${pr.number}`,
+      number: pr.number,
+      title: pr.title,
+      url: pr.url,
+      repo,
+      stage,
+      assignedRole,
+      branch: pr.headRefName,
+      prNumber: pr.number,
+      prUrl: pr.url,
+      prApproved: pr.reviewDecision === 'APPROVED',
+      pendingQuestions: questions,
+      needsHuman,
+      createdAt: new Date(pr.createdAt).getTime() || Date.now(),
+      updatedAt: new Date(pr.updatedAt).getTime() || Date.now(),
+      labels,
+    });
   }
 
   return tasks;
