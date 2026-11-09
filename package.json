@@ -47,6 +47,9 @@
     "antigravity:status": "tsx scripts/antigravity-install.ts status",
     "agentsquad:status": "tsx extensions/agentsquad/cli.ts status",
     "agentsquad:demo": "tsx extensions/agentsquad/cli.ts demo",
+    "kiro:install": "node mod/habblaud-kiro/install.mjs install",
+    "kiro:uninstall": "node mod/habblaud-kiro/install.mjs uninstall",
+    "kiro:status": "node mod/habblaud-kiro/install.mjs status",
     "remote:setup": "tsx scripts/remote-setup.ts",
     "remote:mdns": "tsx scripts/remote-mdns.ts",
     "release": "tsx scripts/release.ts"

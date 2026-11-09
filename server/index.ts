@@ -38,7 +38,7 @@ import { ClaudeWatcher } from './sources/watcher';
 import { discoverCodexDirs } from './sources/codex/accounts';
 import { CodexHistory } from './sources/codex/history';
 import { CodexSource } from './sources/codex/source';
-import { discoverKiroDir } from './sources/kiro/accounts';
+import { discoverKiroDirs } from './sources/kiro/accounts';
 import { KiroHistory } from './sources/kiro/history';
 import { KiroSource } from './sources/kiro/source';
 import { discoverAntigravityDir } from './sources/antigravity/accounts';
@@ -145,8 +145,10 @@ const agents = new SourceSet([claude]);
 const codexDirs = config.codex ? discoverCodexDirs(process.env, config.home) : [];
 const codex = codexDirs.length ? new CodexSource({ accounts, office, dirs: codexDirs, env: process.env, home: config.home }) : undefined;
 if (codex) agents.add(codex);
-const kiroDir = config.kiro ? discoverKiroDir(process.env, config.home) : undefined;
-const kiro = kiroDir ? new KiroSource({ accounts, office, dir: kiroDir, home: config.home, env: process.env, inDocker: config.inDocker }) : undefined;
+// Kiro: uma conta por pasta (KIRO_HOME/~/.kiro e, no WSL, a do Windows; HABBLAUD_KIRO_DIRS substitui a lista).
+const kiroDirs = config.kiro ? discoverKiroDirs(process.env, config.home, config.inDocker ? { wsl: false } : {}) : [];
+const kiroDir = kiroDirs[0]?.dir;
+const kiro = kiroDirs.length ? new KiroSource({ accounts, office, dirs: kiroDirs, home: config.home, env: process.env, inDocker: config.inDocker }) : undefined;
 if (kiro) agents.add(kiro);
 const antigravityDir = config.antigravity ? discoverAntigravityDir(process.env, config.home) : undefined;
 const antigravity = antigravityDir ? new AntigravitySource({ accounts, office, dir: antigravityDir, home: config.home, env: process.env }) : undefined;
@@ -422,6 +424,7 @@ const api = createApiHandler({
   antigravityEvents: config.antigravity,
   antigravityLive,
   squad: squadHandler,
+  kiroLive: kiro,
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,
@@ -545,8 +548,9 @@ server.listen(config.port, config.host, () => {
     const kiroAccounts = kiro.accountEntries();
     const open = kiro.sources().reduce((n, s) => n + s.sessions, 0);
     log.info(tr('   Kiro: {0} conta(s), {1} sessão(ões) aberta(s).', [kiroAccounts.length, open]));
+    const how = new Map(kiro.describe().map((d) => [d.account, d.liveness]));
     for (const a of kiroAccounts) {
-      log.info(tr('   Conta {0} do Kiro ({1}): {2}', [a.detected.short, a.id, a.detected.configDir]));
+      log.info(tr('   Conta {0} do Kiro ({1}): {2} · sessões abertas por {3}', [a.detected.short, a.id, a.detected.configDir, how.get(a.id) ?? '?']));
     }
   } else {
     log.info(tr('   Kiro: {0}.', [config.kiro ? tr('nenhuma pasta do Kiro encontrada (defina KIRO_HOME)') : tr('desligado (HABBLAUD_KIRO=0)')]));

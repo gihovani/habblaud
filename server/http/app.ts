@@ -9,6 +9,8 @@ import type { DayStatsService } from '../history/daystats';
 import type { Office } from '../model/office';
 import type { CodexLive } from '../sources/codex/live';
 import type { AntigravityLive } from '../sources/antigravity/live';
+import { handleKiroEvent } from '../kiro/http';
+import type { KiroLive } from '../sources/kiro/live';
 import type { SessionLookup } from '../sources/source';
 import { isJsonContentType, isLoopbackHost } from './guard';
 import type { RemoteFeature } from './remote';
@@ -72,6 +74,8 @@ export interface ApiDeps {
    */
   antigravityEvents?: boolean;
   antigravityLive?: AntigravityLive;
+  /** Fonte do Kiro ao vivo: recebe os eventos do hook do Kiro (POST /api/kiro/events, server/kiro/http.ts). */
+  kiroLive?: KiroLive;
   /** Novo agente pelo escritório (/api/spawn e, para o auxiliar do host, /api/host/spawn/*; server/spawn/spawn.ts). */
   spawn?: SpawnService;
   /** Pastas sugeridas no "Novo agente" (GET /api/spawn/folders; spawn/folders.ts): projetos recentes. */
@@ -394,6 +398,7 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
           messages: !!deps.messages && (!remote || trusted(req, 'messages')),
           codexEvents: !!deps.codexLive,
           ...(deps.antigravityEvents ? { antigravityEvents: true, antigravitySource: !!deps.antigravityLive } : {}),
+          kiroEvents: !!deps.kiroLive,
           updates: updatesSummary(deps.updates?.status()),
           sources: deps.sources(),
           accounts: accounts.allEntries().map((a) =>
@@ -517,6 +522,14 @@ export function createApiHandler(deps: ApiDeps): (req: IncomingMessage, res: Ser
       return true;
     }
     if (deps.squad && deps.squad(req, res, path)) return true;
+    if (path === '/api/kiro/events') {
+      // Eventos do hook do Kiro: a mesma trava dos do Codex (só observam, só pelo próprio computador).
+      if (method !== 'POST') methodNotAllowed(res, 'POST');
+      else if (!trusted(req) || (!deps.inDocker && !isLoopbackAddress(req.socket.remoteAddress))) {
+        sendJson(res, 403, { error: denied(req, tr('eventos do Kiro só são aceitos pelo próprio computador (http://localhost ou http://127.0.0.1)')) });
+      } else handleKiroEvent(req, res, { live: deps.kiroLive }).catch((err) => fail(res, err));
+      return true;
+    }
     if (path === '/api/spawn' || path.startsWith('/api/spawn/')) {
       // Abre uma sessão nova no app do Claude: roda código no computador, então a mesma trava das mensagens.
       const spawn = deps.spawn;

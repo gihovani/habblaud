@@ -616,6 +616,30 @@ terminal with live streaming, and history. The Kiro account chip carries the **K
 - **Zero configuration:** Habblaud detects active Kiro CLI sessions automatically by reading session locks in
   `~/.kiro/sessions/cli/*.lock` (and `KIRO_HOME` or `KIRO_SESSIONS_DIR`). The working directory (`cwd`) is determined from
   the lockfile and process status.
+- **Open session = live Kiro process:** the lock's PID must really be Kiro (`/proc` on Linux, `tasklist` on Windows, `ps`
+  on macOS); a stale lock whose PID was reused by another program doesn't become a character. In Docker, or when processes
+  can't be listed, a lock, `.json` or `.jsonl` touched in the last 12 h counts (`HABBLAUD_KIRO_LIVENESS=pid|mtime` forces a
+  method).
+- **WSL and Windows together:** running in WSL, Habblaud also shows the Kiro sessions on Windows
+  (`/mnt/c/Users/<you>/.kiro`, account **Kiro (Windows)**, live via `tasklist.exe`). `HABBLAUD_KIRO_WINDOWS=0` turns it off;
+  `HABBLAUD_KIRO_DIRS` (comma-separated list) picks the folders.
+- **Waiting for approval:** on Linux/WSL, a pending tool with the Kiro process idle (no I/O and no new process under it)
+  becomes "Needs you: approve a permission". `HABBLAUD_KIRO_APPROVAL=0` turns it off. Native Windows and macOS don't get it.
+- **Times and Kiro Crew:** the replay uses the prompt and turn times from the `.json` (the `.jsonl` has no per-line time)
+  and doesn't repeat the history in the live feed; the context Kiro Crew injects in the prompt (`[AGENT SYSTEM PROMPT] …`)
+  is removed from the title and the balloon.
+- **Without the hook:** Kiro writes the transcript per model response (the request shows up with the first response),
+  so the character only starts working when it arrives; and Kiro CLI 3.x sessions (`~/.kiro/sessions/<hash>/sess_*`)
+  don't show up.
+- **Kiro hook (optional):** `npm run kiro:install` copies `mod/habblaud-kiro/hook.mjs` to `~/.habblaud/kiro-hook.mjs` and
+  registers it in Kiro CLI: on 2.x, in your agents at `~/.kiro/agents/*.json` (Kiro Crew's are skipped; the built-in
+  `kiro_default` agent doesn't take hooks); on 3.x, in `~/.kiro/hooks/habblaud.json`. With it the character works as soon
+  as you send the request, each tool closes on `PostToolUse` (the "approve a permission" for quick tools works on any
+  OS) and 3.x sessions show up (hook only: with no PID, they leave after 30 min without events). The hook only observes,
+  always exits 0 and the command carries `|| true` (`& exit /b 0` on Windows): Habblaud being down doesn't get in Kiro's
+  way. `npm run kiro:status` shows where it is; `npm run kiro:uninstall` removes it (backing up each agent first).
+  Options: `--formato v2|v3`, `--agente a,b`, `--pasta <project>`, `--port <n>`, `--dry-run`. On Windows, run the
+  installer with Windows Node (`node <Habblaud>\mod\habblaud-kiro\install.mjs install`).
 - **Live Terminal & History:** Habblaud tails `~/.kiro/sessions/cli/<sessionId>.jsonl` to reconstruct prompts, tool usage
   (shell commands, file edits, git, test execution), model thinking, and outputs in real time via Server-Sent Events.
 - **Account & Plan:** Habblaud discovers plan metadata automatically from local files (`plan`, `plan.txt`,

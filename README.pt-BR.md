@@ -614,6 +614,31 @@ terminal com streaming ao vivo e histórico. O chip da conta do Kiro leva o selo
 - **Zero configuração:** o Habblaud detecta sessões ativas do Kiro CLI automaticamente lendo as travas de sessão em
   `~/.kiro/sessions/cli/*.lock` (e `KIRO_HOME` ou `KIRO_SESSIONS_DIR`). A pasta do projeto (`cwd`) é determinada a partir do
   arquivo de trava e o status do processo.
+- **Sessão aberta = processo do Kiro vivo:** o PID da trava tem de ser mesmo um Kiro (`/proc` no Linux, `tasklist` no
+  Windows, `ps` no macOS); trava esquecida com PID reaproveitado por outro programa não vira personagem. No Docker, ou sem
+  como listar processos, vale a trava, o `.json` ou o `.jsonl` mexido nas últimas 12 h (`HABBLAUD_KIRO_LIVENESS=pid|mtime`
+  força um método).
+- **WSL e Windows juntos:** rodando no WSL, o Habblaud também mostra as sessões do Kiro no Windows
+  (`/mnt/c/Users/<você>/.kiro`, conta **Kiro (Windows)**, vivas pelo `tasklist.exe`). `HABBLAUD_KIRO_WINDOWS=0` desliga;
+  `HABBLAUD_KIRO_DIRS` (lista separada por vírgula) escolhe as pastas.
+- **Esperando aprovação:** no Linux/WSL, ferramenta pendente com o processo do Kiro parado (sem I/O e sem processo novo
+  debaixo dele) vira "Precisa de você: aprovar uma permissão". `HABBLAUD_KIRO_APPROVAL=0` desliga. No Windows nativo e no
+  macOS não há esse aviso.
+- **Horários e Kiro Crew:** a releitura usa o horário dos prompts e dos turnos do `.json` (o `.jsonl` não tem horário por
+  linha) e não repete o histórico no feed ao vivo; o contexto que o Kiro Crew injeta no prompt
+  (`[AGENT SYSTEM PROMPT] …`) sai do título e do balão.
+- **Sem o hook:** o Kiro grava o transcript por resposta do modelo (o pedido aparece junto com a primeira resposta), então
+  o personagem só começa a trabalhar quando ela chega; e as sessões do Kiro CLI 3.x (`~/.kiro/sessions/<hash>/sess_*`)
+  não aparecem.
+- **Hook do Kiro (opcional):** `npm run kiro:install` copia `mod/habblaud-kiro/hook.mjs` para `~/.habblaud/kiro-hook.mjs`
+  e o registra no Kiro CLI: no 2.x, nos seus agentes em `~/.kiro/agents/*.json` (os do Kiro Crew ficam de fora; o agente
+  embutido `kiro_default` não aceita hooks); no 3.x, em `~/.kiro/hooks/habblaud.json`. Com ele o personagem trabalha
+  assim que você manda o pedido, cada ferramenta fecha no `PostToolUse` (o "aprovar uma permissão" das ferramentas
+  rápidas vale em qualquer sistema) e as sessões do 3.x aparecem (só pelo hook: sem PID, saem depois de 30 min sem
+  eventos). O hook só observa, sai sempre com 0 e o comando leva `|| true` (`& exit /b 0` no Windows): Habblaud fora do
+  ar não atrapalha o Kiro. `npm run kiro:status` mostra onde está; `npm run kiro:uninstall` tira (backup antes de
+  mexer em cada agente). Opções: `--formato v2|v3`, `--agente a,b`, `--pasta <projeto>`, `--port <n>`, `--dry-run`. No
+  Windows, rode o instalador com o Node do Windows (`node <Habblaud>\mod\habblaud-kiro\install.mjs install`).
 - **Terminal ao vivo e histórico:** o Habblaud acompanha `~/.kiro/sessions/cli/<sessionId>.jsonl` para reconstruir
   prompts, uso de ferramentas (comandos de shell, edições de arquivos, git, testes), pensamentos do modelo e respostas em
   tempo real via Server-Sent Events.
