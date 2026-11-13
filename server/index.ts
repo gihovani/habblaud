@@ -425,6 +425,7 @@ const api = createApiHandler({
   antigravityLive,
   squad: squadHandler,
   kiroLive: kiro,
+  kiroPermissions: permissions,
   stats,
   updates,
   remote: config.remote ? { is: isRemoteRequest, allows: (f) => config.remote!.allow.has(f) } : undefined,

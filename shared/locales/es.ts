@@ -505,6 +505,7 @@ export const ES: Readonly<Record<string, string>> = {
   "volta ao terminal em menos de 1 min": "vuelve a la terminal en menos de 1 min",
   "volta ao terminal em {0}": "vuelve a la terminal en {0}",
   "No Codex, a aprovação só aparece no terminal depois que você responder aqui ou o prazo acabar.": "En Codex, la aprobación solo aparece en la terminal después de que respondas aquí o se acabe el plazo.",
+  "No Kiro, recusar aqui bloqueia a ferramenta (o motivo vai para o agente). Aprovar libera o pedido: se o Kiro já confia na ferramenta, ela roda direto; senão, confirme no terminal.": "En Kiro, rechazar aquí bloquea la herramienta (el motivo va al agente). Aprobar libera la solicitud: si Kiro ya confía en la herramienta, se ejecuta directo; si no, confírmala en la terminal.",
   "Este subagente roda em segundo plano: o terminal só mostra o pedido depois que você responder aqui ou escolher “Responder no terminal”.": "Este subagente se ejecuta en segundo plano: la terminal solo muestra la solicitud después de que respondas aquí o elijas “Responder en la terminal”.",
   "recolher": "contraer",
   "Aprovado": "Aprobado",
@@ -3346,4 +3347,9 @@ export const ES: Readonly<Record<string, string>> = {
   "falha ao abrir pasta": "error al abrir la carpeta",
   "iniciar watcher só pelo próprio computador (http://localhost)": "iniciar el watcher solo desde la propia computadora (http://localhost)",
   "parar watcher só pelo próprio computador (http://localhost)": "detener el watcher solo desde la propia computadora (http://localhost)",
+  "Esperando aprovação": "Esperando aprobación",
+  "Eventos do Kiro: falha ao soltar um pedido de permissão ({0}).": "Eventos de Kiro: no se pudo liberar una solicitud de permiso ({0}).",
+  "qualquer comando no shell": "cualquier comando en el shell",
+  "qualquer escrita de arquivo": "cualquier escritura de archivo",
+  "comandos que começam com “{0}”": "comandos que empiezan con “{0}”",
 };
