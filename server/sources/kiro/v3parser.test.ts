@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyKiroTodo, applyKiroV3Line, createKiroV3State, diffLineCounts, kiroEditLines, kiroSubTitle, kiroV3Text } from './v3parser';
+import { applyKiroTodo, applyKiroV3Line, createKiroV3State, diffLineCounts, kiroEditLines, kiroSubTitle, kiroV3ResultText, kiroV3Text } from './v3parser';
 
 // Dados sintéticos no formato do messages.jsonl do Kiro CLI 3.x.
 const T0 = Date.parse('2030-01-02T10:00:00.000Z');
@@ -27,7 +27,61 @@ describe('applyKiroV3Line', () => {
     expect(line({ type: 'turn_end', stopReason: 'cancelled' })?.activities[0].text).toContain('Interrompido');
     const e = line({ type: 'session_metadata', key: 'displayError', value: { message: 'falhou o modelo', errorType: 'x' } });
     expect(e?.activities[0]).toMatchObject({ kind: 'error', error: true });
-    expect(line({ type: 'session_metadata', key: 'contextUsage', value: { usagePercentage: 12 } })).toBeUndefined();
+  });
+
+  it('contextUsage -> state.contextPct (0–100); formato desconhecido ignorado', () => {
+    const { state, line } = run();
+    expect(line({ type: 'session_metadata', key: 'contextUsage', value: { usagePercentage: 12.5 } })).toMatchObject({ metaChanged: true, activities: [] });
+    expect(state.contextPct).toBe(12.5);
+    expect(line({ type: 'session_metadata', key: 'contextUsage', value: { usagePercentage: 12.5 } })?.metaChanged).toBeUndefined();
+    line({ type: 'session_metadata', key: 'contextUsage', value: { usagePercentage: 140 } });
+    expect(state.contextPct).toBe(100);
+    expect(line({ type: 'session_metadata', key: 'contextUsage', value: { usagePercentage: 'x' } })).toBeUndefined();
+    expect(line({ type: 'session_metadata', key: 'contextUsage' })).toBeUndefined();
+  });
+
+  it('usage_summary soma créditos; elapsedTime vira "Concluiu em" no turn_end', () => {
+    const { state, line } = run();
+    line({ type: 'user', content: 'oi' });
+    const u = line({ type: 'usage_summary', status: 'success', elapsedTime: 4_000, promptTurnSummaries: [{ unit: 'credit', unitPlural: 'credits', usage: 0.25, usedTools: [] }, { unit: 'credit', usage: 0.5 }, { unit: 'token', usage: 99 }, { usage: 'x' }] });
+    expect(u).toMatchObject({ statsChanged: true, activities: [] });
+    expect(state.stats.credits).toBeCloseTo(0.75);
+    line({ type: 'usage_summary', promptTurnSummaries: [{ unit: 'credit', usage: 1 }] });
+    expect(state.stats.credits).toBeCloseTo(1.75);
+    // o segundo usage_summary não tinha elapsedTime: o turno sai sem duração (o Office sintetiza)
+    expect(line({ type: 'turn_end', stopReason: 'end_turn' })?.activities).toEqual([]);
+    line({ type: 'usage_summary', status: 'success', elapsedTime: 4_000, promptTurnSummaries: [] });
+    const end = line({ type: 'turn_end', stopReason: 'end_turn' });
+    expect(end?.activities[0]).toMatchObject({ kind: 'done', durationMs: 4_000 });
+    expect(end?.activities[0].text).toContain('Concluiu em');
+    // abortado: sem "Concluiu"
+    line({ type: 'usage_summary', status: 'aborted', elapsedTime: 2_000 });
+    expect(line({ type: 'turn_end', stopReason: 'cancelled' })?.activities.map((a) => a.kind)).not.toContain('done');
+    expect(line({ type: 'usage_summary', promptTurnSummaries: 'x' })?.statsChanged).toBe(false);
+  });
+
+  it('tombstone summarization -> compactando; model_route -> modelo; mode_change -> papel', () => {
+    const { state, line } = run();
+    expect(line({ type: 'tombstone', kind: 'summarization' })?.activities[0].kind).toBe('compact');
+    expect(line({ type: 'tombstone', kind: 'checkpoint_revert' })).toBeUndefined();
+    expect(line({ type: 'model_route', fromModel: 'auto', toModel: 'claude-sonnet-4.5', handoffMode: 'x' })?.metaChanged).toBe(true);
+    expect(state.model).toBe('claude-sonnet-4.5');
+    expect(line({ type: 'model_route', toModel: 'claude-sonnet-4.5' })).toBeUndefined();
+    expect(line({ type: 'model_route' })).toBeUndefined();
+    expect(line({ type: 'mode_change', fromMode: 'kiro_default', toMode: 'kiro_planner' })?.role).toBe('planner');
+    expect(line({ type: 'mode_change', toMode: 3 })).toBeUndefined();
+  });
+
+  it('GitHub: gh pr create no execute_bash vira evento com a URL da saída', () => {
+    const { line } = run();
+    line({ type: 'tool_call', toolCallId: 'g1', toolName: 'execute_bash', args: { command: 'gh pr create --fill' } });
+    const r = line({ type: 'tool_result', toolCallId: 'g1', success: true, content: [{ kind: 'json', data: { stdout: 'https://github.com/acme/loja/pull/12\n', stderr: '', exit_status: 'exit status: 0' } }] });
+    expect(r?.github).toEqual({ key: 'g1', event: { kind: 'pr_opened', number: 12, repo: 'acme/loja', url: 'https://github.com/acme/loja/pull/12' } });
+    line({ type: 'tool_call', toolCallId: 'g2', toolName: 'execute_bash', args: { command: 'ls' } });
+    expect(line({ type: 'tool_result', toolCallId: 'g2', success: true, content: 'https://github.com/acme/loja/pull/12' })?.github).toBeUndefined();
+    // resultado em texto puro também vale
+    line({ type: 'tool_call', toolCallId: 'g3', toolName: 'shell', args: { command: 'gh pr create --fill' } });
+    expect(line({ type: 'tool_result', toolCallId: 'g3', success: true, content: 'https://github.com/acme/loja/pull/13' })?.github?.event).toMatchObject({ kind: 'pr_opened', number: 13 });
   });
 
   it('ruído e linhas inválidas são ignorados', () => {
@@ -99,6 +153,12 @@ describe('applyKiroV3Line', () => {
     line({ type: 'sub_agent_start' });
     expect(state.stats.subagents).toBe(2);
     expect(state.stats.tokensIn).toBe(0);
+  });
+
+  it('sub_agent_start: backgroundExecution no payload marca segundo plano; sem ele, primeiro plano', () => {
+    const { line } = run();
+    expect(line({ type: 'sub_agent_start', subSessionId: 'sub_1', subAgentName: 'kiro_x', backgroundExecution: true })?.subStart?.background).toBe(true);
+    expect(line({ type: 'sub_agent_start', subSessionId: 'sub_2', subAgentName: 'kiro_x' })?.subStart?.background).toBeUndefined();
   });
 
   it('edições somam linhas só quando dão certo', () => {
@@ -174,5 +234,13 @@ describe('subagentes do 3.x', () => {
     expect(kiroSubTitle('x'.repeat(200))?.length).toBeLessThanOrEqual(90);
     expect(kiroSubTitle('<orchestrator_briefing>só briefing', 'Explorar o repo')).toBe('Explorar o repo');
     expect(kiroSubTitle('', '')).toBeUndefined();
+  });
+});
+
+describe('kiroV3ResultText', () => {
+  it('string, partes de texto e saída de shell', () => {
+    expect(kiroV3ResultText('ok')).toBe('ok');
+    expect(kiroV3ResultText([{ kind: 'text', data: 'a' }, { data: { stdout: 'b', stderr: 'c' } }, { text: 'd' }, 7])).toBe('a\nb\nc\nd');
+    expect(kiroV3ResultText(undefined)).toBe('');
   });
 });

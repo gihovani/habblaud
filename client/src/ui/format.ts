@@ -10,6 +10,7 @@ const LOCALE = intlLocale();
 
 const numberFmt1 = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 1 });
 const integerFmt = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
+const creditsFmt = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 });
 const usdFmt = new Intl.NumberFormat(LOCALE, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 // Relógio de 24 h em todos os idiomas (no inglês o AM/PM não cabe na coluna do feed).
 const clockFmt = new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -182,6 +183,11 @@ export function formatInt(n: number): string {
 /** Custo em dólares: "US$ 1,23". */
 export function formatUSD(n: number): string {
   return usdFmt.format(n).replace(/ /g, ' ');
+}
+
+/** Créditos do Kiro: até 2 casas ("1,25", "0,03", "12"). */
+export function formatCredits(n: number): string {
+  return creditsFmt.format(Math.max(0, n));
 }
 
 /** Percentual de uso limitado a 0–100 e arredondado. */

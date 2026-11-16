@@ -8,7 +8,9 @@ import { MessageComposer } from './composer';
 import type { UiComponent, UiContext } from './context';
 import { copyText, h, iconButton, KeyedList, setAttr, setHidden, setStyleVar, setText, setTitle, setVariant } from './dom';
 import {
+  clampPercent,
   formatClock,
+  formatCredits,
   formatDateTime,
   formatDuration,
   formatElapsed,
@@ -390,9 +392,11 @@ class AgentView {
       ['tokensIn', tr('Tokens de entrada')],
       ['tokensOut', tr('Tokens de saída')],
       ['cost', tr('Custo estimado')],
+      ['credits', tr('Créditos')],
       ['lines', tr('Linhas'), h('span', { class: 'ui-lines' }, this.linesPlus, this.linesMinus)],
       ['subs', tr('Subagentes disparados')],
       ['model', tr('Modelo')],
+      ['context', tr('Contexto usado')],
       ['branch', 'Branch'],
       ['perm', tr('Permissões')],
       ['session', tr('Sessão'), h('span', { class: 'ui-copy-row' }, this.sessionValue, copyButton(() => this.last?.sessionId ?? '', tr('Copiar id da sessão')))],
@@ -734,9 +738,12 @@ class AgentView {
     const s = a.stats;
     const st = this.stats;
     st.set('tools', formatInt(s.toolCalls));
-    st.set('tokensIn', formatTokens(s.tokensIn));
-    st.set('tokensOut', formatTokens(s.tokensOut));
+    // Kiro não informa tokens (só créditos): sem as linhas sempre zeradas.
+    const kiro = providerOf(a) === 'kiro';
+    st.set('tokensIn', kiro ? null : formatTokens(s.tokensIn));
+    st.set('tokensOut', kiro ? null : formatTokens(s.tokensOut));
     st.set('cost', s.costUSD !== undefined ? formatUSD(s.costUSD) : null);
+    st.set('credits', s.credits !== undefined ? formatCredits(s.credits) : null);
     const codex = providerOf(a) === 'codex';
     const hasLines = s.linesAdded !== undefined || s.linesRemoved !== undefined;
     st.show('lines', hasLines);
@@ -744,6 +751,7 @@ class AgentView {
     setText(this.linesMinus, `−${formatInt(s.linesRemoved ?? 0)}`);
     st.set('subs', a.kind === 'main' ? formatInt(s.subagents) : null);
     st.set('model', prettyModel(a.model));
+    st.set('context', a.contextPct !== undefined ? `${clampPercent(a.contextPct)}%` : null);
     st.set('branch', a.gitBranch ?? null);
     // Codex: a política de aprovação (quando o servidor a manda) no lugar do modo de permissão do Claude Code.
     st.label('perm', codex ? tr('Aprovações') : tr('Permissões'));
@@ -757,7 +765,7 @@ class AgentView {
   }
 }
 
-type StatKey = 'tools' | 'tokensIn' | 'tokensOut' | 'cost' | 'lines' | 'subs' | 'model' | 'branch' | 'perm' | 'session' | 'start' | 'duration' | 'bg';
+type StatKey = 'tools' | 'tokensIn' | 'tokensOut' | 'cost' | 'credits' | 'lines' | 'subs' | 'model' | 'context' | 'branch' | 'perm' | 'session' | 'start' | 'duration' | 'bg';
 
 /** Lista chave/valor de linhas fixas: cada linha é criada uma vez e só tem o texto/visibilidade atualizados. */
 class KvList<K extends string> {

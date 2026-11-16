@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Office } from '../../model/office';
 import { NameStore } from '../../model/names';
 import type { KiroLiveness } from './liveness';
-import { KiroV3Watcher, readKiroV3Lease } from './v3watcher';
+import { KiroV3Watcher, readKiroV3Lease, readKiroV3SubBackground } from './v3watcher';
 import { kiroV3SubTranscriptPath } from './v3paths';
 
 // Pasta do Kiro 3.x sintética: session-leases/<id>.lease e sessions/<hash>/<id>/{session.json,messages.jsonl}.
@@ -188,6 +188,46 @@ describe('KiroV3Watcher', () => {
     }
   });
 
+  it('créditos, contexto, modelo real, papel, autopilot e "Concluiu em" chegam ao agente; GitHub anima a sala', () => {
+    const t = setup();
+    t.session([]);
+    const meta = join(t.sdir, 'session.json');
+    const writeMeta = (extra: Record<string, unknown>, mtime: number) => {
+      writeFileSync(meta, JSON.stringify({ ...JSON.parse(readFileSync(meta, 'utf8')), ...extra }));
+      utimesSync(meta, mtime / 1000, mtime / 1000);
+    };
+    writeMeta({ autopilot: true }, t.now - 5_000);
+    t.watcher.start();
+    try {
+      expect(t.office.get(SID)).toMatchObject({ permissionMode: 'auto', model: 'model-x', role: 'default' });
+      t.append({ type: 'user', content: 'abra o PR' });
+      t.append({ type: 'session_metadata', key: 'contextUsage', value: { usagePercentage: 42.4 } });
+      t.append({ type: 'model_route', fromModel: 'auto', toModel: 'claude-sonnet-4.5' });
+      t.append({ type: 'tool_call', toolCallId: 'g1', toolName: 'execute_bash', args: { command: 'gh pr create --fill' } });
+      t.append({ type: 'tool_result', toolCallId: 'g1', success: true, content: [{ kind: 'json', data: { stdout: 'https://github.com/acme/loja/pull/12\n' } }] });
+      t.append({ type: 'usage_summary', status: 'success', elapsedTime: 3_000, promptTurnSummaries: [{ unit: 'credit', usage: 0.4 }, { unit: 'credit', usage: 0.2 }] });
+      t.append({ type: 'turn_end', stopReason: 'end_turn' });
+      t.append({ type: 'mode_change', fromMode: 'kiro_default', toMode: 'kiro_planner' });
+      t.watcher.scan();
+      const a = t.office.get(SID);
+      expect(a).toMatchObject({ contextPct: 42.4, model: 'claude-sonnet-4.5', role: 'planner', status: 'idle' });
+      expect(a?.stats.credits).toBeCloseTo(0.6);
+      expect(a?.activity).toMatchObject({ kind: 'done', durationMs: 3_000 });
+      expect(a?.recent.filter((x) => x.kind === 'done')).toHaveLength(1);
+      expect(a?.recent.some((x) => x.kind === 'git')).toBe(true);
+      const room = t.office.commit().snapshot.rooms.find((r) => r.id === a?.roomId);
+      expect(room?.effect).toMatchObject({ kind: 'party', agentId: SID });
+
+      // session.json muda (autopilot desligado): o papel do mode_change fica, o modo de permissão troca
+      writeMeta({ autopilot: false }, t.now + 1_000);
+      t.append({ type: 'turn_start' });
+      t.watcher.scan();
+      expect(t.office.get(SID)).toMatchObject({ permissionMode: 'default', role: 'planner' });
+    } finally {
+      t.watcher.stop();
+    }
+  });
+
   describe('subagentes do 3.x', () => {
     const SUB_A = 'aaaaaaaa-0000-4000-8000-00000000000a';
     const SUB_B = 'bbbbbbbb-0000-4000-8000-00000000000b';
@@ -251,6 +291,43 @@ describe('KiroV3Watcher', () => {
         // concluído: o terminal ainda acha o arquivo
         expect(t.watcher.transcriptPathOf(A)).toBe(join(t.sdir, 'sub-executions', `${SUB_A}.jsonl`));
         expect(t.watcher.transcriptPathOf(`${SID}:../x`)).toBeUndefined();
+      } finally {
+        t.watcher.stop();
+      }
+    });
+
+    it('subagente: segundo plano pelo payload; créditos e contexto do próprio arquivo', () => {
+      const t = setup();
+      t.session([[{ type: 'user', content: 'divida' }], [{ type: 'turn_start' }]]);
+      t.watcher.start();
+      try {
+        t.append({ type: 'sub_agent_start', subSessionId: SUB_A, subAgentName: 'bg', prompt: 'p', backgroundExecution: true });
+        t.watcher.scan();
+        expect(t.office.get(A)?.background).toBe(true);
+        t.subAppend(SUB_A, { type: 'usage_summary', promptTurnSummaries: [{ unit: 'credit', usage: 0.3 }] });
+        t.subAppend(SUB_A, { type: 'session_metadata', key: 'contextUsage', value: { usagePercentage: 9 } });
+        t.watcher.scan();
+        expect(t.office.get(A)?.stats.credits).toBeCloseTo(0.3);
+        expect(t.office.get(A)?.contextPct).toBe(9);
+        expect(t.office.get(SID)?.stats.credits).toBeUndefined();
+      } finally {
+        t.watcher.stop();
+      }
+    });
+
+    it('subagente: segundo plano pelo session_start do próprio arquivo (formato do 3.2)', () => {
+      const t = setup();
+      t.session([[{ type: 'user', content: 'divida' }], [{ type: 'turn_start' }]]);
+      t.watcher.start();
+      try {
+        t.subAppend(SUB_A, { type: 'session_start', agentType: 'sub', backgroundExecution: true });
+        t.subAppend(SUB_B, { type: 'session_start', agentType: 'sub', backgroundExecution: false });
+        t.append({ type: 'sub_agent_start', subSessionId: SUB_A, subAgentName: 'bg', prompt: 'p' });
+        t.append({ type: 'sub_agent_start', subSessionId: SUB_B, subAgentName: 'fg', prompt: 'q' });
+        t.watcher.scan();
+        expect(t.office.get(A)?.background).toBe(true);
+        expect(t.office.get(`${SID}:${SUB_B}`)?.background).toBeFalsy();
+        expect(readKiroV3SubBackground(join(t.sdir, 'nao-existe.jsonl'))).toBe(false);
       } finally {
         t.watcher.stop();
       }

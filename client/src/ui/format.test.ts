@@ -5,6 +5,7 @@ import {
   compactDuration,
   FIVE_HOURS_MS,
   formatCountdown,
+  formatCredits,
   formatDuration,
   formatElapsed,
   formatInt,
@@ -88,6 +89,13 @@ describe('números', () => {
     expect(formatTokens(1_250_000)).toBe('1,3 M');
     expect(formatTokens(-3)).toBe('0');
   });
+  it('formatCredits: até 2 casas, nunca negativo', () => {
+    expect(formatCredits(1.256)).toBe('1,26');
+    expect(formatCredits(12)).toBe('12');
+    expect(formatCredits(0.031)).toBe('0,03');
+    expect(formatCredits(-1)).toBe('0');
+  });
+
   it('formatUSD e formatInt em pt-BR', () => {
     expect(formatUSD(1.234)).toBe('US$ 1,23');
     expect(formatUSD(0)).toBe('US$ 0,00');
