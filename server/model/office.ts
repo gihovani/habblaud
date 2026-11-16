@@ -91,6 +91,10 @@ export interface TranscriptSummary {
   model?: string;
   gitBranch?: string;
   permissionMode?: string;
+  /** Contexto usado (%; só o Kiro informa). */
+  contextPct?: number;
+  /** Papel novo (Kiro: mode_change / agentMode); ausente = mantém o atual. */
+  role?: string;
   /** Primeiro evento conhecido (subagentes: o início real, depois de ler o começo do arquivo). */
   firstAt?: number;
   lastAt?: number;
@@ -674,6 +678,8 @@ export class Office {
     set('model', t.model);
     set('gitBranch', t.gitBranch);
     set('permissionMode', t.permissionMode);
+    set('contextPct', t.contextPct);
+    if (t.role) set('role', t.role);
     if (info.kind === 'sub' && t.firstAt !== undefined && t.firstAt < info.startedAt) {
       info.startedAt = t.firstAt;
       changed = true;

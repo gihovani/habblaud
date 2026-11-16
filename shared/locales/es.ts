@@ -3315,4 +3315,6 @@ export const ES: Readonly<Record<string, string>> = {
   "qualquer comando no shell": "cualquier comando en el shell",
   "qualquer escrita de arquivo": "cualquier escritura de archivo",
   "comandos que começam com “{0}”": "comandos que empiezan con “{0}”",
+  "Créditos": "Créditos",
+  "Contexto usado": "Contexto usado",
 };

@@ -1,6 +1,7 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { KiroTerminalParser } from '../sources/kiro/terminal';
 import { createTerminalParser } from '../sources/terminal';
 import { tempDir } from '../test/fixtures';
 import { DeliveryIndex, headlineOf, linkedFiles, parseTurns, summaryOf } from './deliveries';
@@ -107,5 +108,37 @@ describe('entregas: pedidos do transcript', () => {
     // "De nada!" sem ferramentas não é entrega; o último pedido conta só quando o agente para.
     busy = false;
     expect((await idx.list()).map((x) => x.request)).toEqual(['Corrija o relatório de vendas']);
+  });
+});
+
+describe('entregas: Kiro conta os arquivos editados', () => {
+  const v3 = (payload: object) => JSON.stringify({ id: 'x', timestamp: ts(1), payload });
+  const v2tool = (name: string, input: object) =>
+    JSON.stringify({ kind: 'AssistantMessage', data: { content: [{ kind: 'toolUse', data: { toolUseId: `t-${name}`, name, input } }] } });
+
+  it('3.x: str_replace/fs_write/fs_append viram Edit/Write; leitura e shell não contam', () => {
+    const lines = [
+      v3({ type: 'user', content: 'Ajuste os arquivos' }),
+      v3({ type: 'tool_call', toolCallId: 'c1', toolName: 'str_replace', args: { path: '/tmp/p/a.ts', oldStr: 'a', newStr: 'b' } }),
+      v3({ type: 'tool_call', toolCallId: 'c2', toolName: 'fs_write', args: { path: '/tmp/p/b.md', text: 'novo' } }),
+      v3({ type: 'tool_call', toolCallId: 'c3', toolName: 'fs_append', args: { path: '/tmp/p/c.txt', text: 'fim' } }),
+      v3({ type: 'tool_call', toolCallId: 'c4', toolName: 'read_file', args: { path: '/tmp/p/a.ts' } }),
+      v3({ type: 'tool_call', toolCallId: 'c5', toolName: 'shell', args: { command: 'ls' } }),
+      v3({ type: 'assistant', content: 'Arquivos ajustados e conferidos, tudo pronto.', operationType: 'Say' }),
+    ];
+    const { last } = parseTurns(lines, new KiroTerminalParser());
+    expect([last?.tools, last?.edited.size]).toEqual([5, 3]);
+  });
+
+  it('2.x: write/fs_write com command (create, strReplace, append) contam por arquivo', () => {
+    const lines = [
+      JSON.stringify({ kind: 'Prompt', data: { content: [{ kind: 'text', data: 'Ajuste os arquivos' }] } }),
+      v2tool('write', { command: 'create', path: '/tmp/p/novo.md', content: 'x' }),
+      v2tool('write', { command: 'strReplace', path: '/tmp/p/app.ts', oldStr: 'a', newStr: 'b' }),
+      v2tool('fs_write', { command: 'append', path: '/tmp/p/log.txt', new_str: 'fim' }),
+      v2tool('fs_read', { path: '/tmp/p/app.ts' }),
+    ];
+    const { last } = parseTurns(lines, new KiroTerminalParser());
+    expect([last?.tools, last?.edited.size]).toEqual([4, 3]);
   });
 });

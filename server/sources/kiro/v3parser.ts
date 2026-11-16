@@ -1,12 +1,16 @@
 // Parser das linhas do transcript do Kiro CLI 3.x (<pasta>/sessions/<hash>/<sessionId>/messages.jsonl).
 // Cada linha é um evento {id, timestamp (ISO), payload: {type, ...}}: user, assistant (Say/Reasoning), tool_call,
 // tool_result, pending_interaction (pedido de aprovação), interaction_resolved, turn_start/turn_end, usage_summary,
-// session_metadata, sub_agent_start/sub_agent_complete. O resto (hooks, steering, notas) é ruído e fica de fora.
+// session_metadata (contextUsage, displayError), sub_agent_start/sub_agent_complete, e os do schema que ainda não
+// apareceram aqui: tombstone (compactação), model_route (modelo real atrás do "auto"), mode_change (papel). O resto
+// (hooks, steering, notas) é ruído e fica de fora. Formato desconhecido = ignorado.
 // Sem I/O: o estado (tarefas, números, ferramentas vistas, aprovações pendentes) vai num KiroV3State que o watcher
 // guarda por sessão. As descrições reaproveitam as do 2.x (parser.ts) e as do Claude Code (shared/activity.ts).
+import type { GitHubEvent } from '../../../shared/github';
 import type { Activity, AgentStats, AgentStatus, TaskItem } from '../../../shared/types';
 import { describePrompt, describeShellJob, describeTool, maskSecrets, SPECIAL, truncate } from '../../../shared/activity';
 import { tr } from '../../../shared/i18n';
+import { detectGitHubResult, githubCallOf } from '../github';
 import type { ShellStart } from '../shells';
 import { cleanKiroPrompt, describeKiroTool, KIRO_SHELL_TOOLS } from './parser';
 import { kiroRole } from './watcher';
@@ -45,6 +49,12 @@ export interface KiroV3State {
   subagentStarts: number;
   /** Dentro de um turno (do pedido ao turn_end): o resultado de um shell em segundo plano depois dele não reabre. */
   inTurn: boolean;
+  /** Modelo real do model_route (o session.json diz "auto" na maioria das vezes). */
+  model?: string;
+  /** Contexto usado (%), do session_metadata contextUsage. */
+  contextPct?: number;
+  /** elapsedTime (ms) do usage_summary do turno: vira "Concluiu em Xs" no turn_end. */
+  turnMs?: number;
   lineNo: number;
 }
 
@@ -85,6 +95,12 @@ export interface KiroV3LineResult {
   subStart?: KiroV3SubStart;
   /** sub_agent_complete: o watcher termina de ler o arquivo do subagente e o tira do trabalho. */
   subComplete?: KiroV3SubComplete;
+  /** Mudou o modelo (model_route) ou o contexto usado (state.model / state.contextPct). */
+  metaChanged?: boolean;
+  /** mode_change: papel novo (agentMode sem o prefixo do Kiro). */
+  role?: string;
+  /** Evento do GitHub num shell (gh pr create, git push…), a mesma detecção do Claude Code e do Codex. */
+  github?: { event: GitHubEvent; key: string };
 }
 
 export interface KiroV3SubStart {
@@ -93,6 +109,8 @@ export interface KiroV3SubStart {
   role?: string;
   /** Pedido resumido (sem o briefing do orquestrador, segredos mascarados, até 90 caracteres). */
   title?: string;
+  /** Subagente em segundo plano (backgroundExecution no payload, se vier). */
+  background?: boolean;
 }
 
 export interface KiroV3SubComplete {
@@ -128,6 +146,26 @@ export function kiroV3Text(content: unknown): string {
   }
   const o = obj(content);
   return str(o.text);
+}
+
+/**
+ * Saída de um tool_result do 3.x para a detecção do GitHub: string, ou partes {kind:'text', data} /
+ * {data: {stdout, stderr, exit_status}} / {text}.
+ */
+export function kiroV3ResultText(content: unknown): string {
+  if (!Array.isArray(content)) return kiroV3Text(content);
+  const out: string[] = [];
+  for (const p of content) {
+    const d = obj(p).data;
+    if (d && typeof d === 'object' && !Array.isArray(d)) {
+      const o = obj(d);
+      for (const k of ['stdout', 'stderr']) if (str(o[k])) out.push(str(o[k]));
+    } else {
+      const t = kiroV3Text([p]);
+      if (t) out.push(t);
+    }
+  }
+  return out.join('\n');
 }
 
 // ------------------------------------------------------------------ subagentes
@@ -290,6 +328,7 @@ export function applyKiroV3Line(state: KiroV3State, line: string, opts: KiroV3Pa
     case 'user': {
       const text = cleanKiroPrompt(kiroV3Text(payload.content));
       state.approvals.clear();
+      state.turnMs = undefined;
       act('p', text ? describePrompt(text) : { kind: 'prompt', icon: '📨', text: tr('Recebeu um pedido') });
       if (text) r.promptText = text;
       state.inTurn = true;
@@ -352,7 +391,17 @@ export function applyKiroV3Line(state: KiroV3State, line: string, opts: KiroV3Pa
           r.statsChanged = true;
         }
       }
-      if (t && KIRO_SHELL_TOOLS.has(t.name)) r.shells.push({ type: 'result', toolUseId: id, error: !ok });
+      if (t && KIRO_SHELL_TOOLS.has(t.name)) {
+        r.shells.push({ type: 'result', toolUseId: id, error: !ok });
+        // GitHub: a mesma detecção do Claude Code e do Codex (rollout.ts), com o comando e a saída.
+        const command = str(t.input.command);
+        const gh = command ? githubCallOf('Bash', { command }) : undefined;
+        if (gh) {
+          const text = kiroV3ResultText(payload.content);
+          const event = detectGitHubResult(gh, { content: ok ? text : `Exit code 1\n${text}`, tur: {}, isError: !ok });
+          if (event) r.github = { event, key: id };
+        }
+      }
       state.approvals.delete(id);
       Object.assign(r, afterApproval(state));
       return r;
@@ -388,6 +437,9 @@ export function applyKiroV3Line(state: KiroV3State, line: string, opts: KiroV3Pa
       const reason = str(payload.stopReason);
       if (INTERRUPTED.test(reason)) act('end', SPECIAL.interrupted());
       else if (FAILED.test(reason)) act('end', { ...SPECIAL.error(), error: true });
+      // usage_summary vem antes do turn_end: o "Concluiu em Xs" sai aqui, no lugar do que o Office sintetiza.
+      else if (state.turnMs) act('done', { ...SPECIAL.turnDone(state.turnMs), durationMs: state.turnMs });
+      state.turnMs = undefined;
       state.approvals.clear();
       state.inTurn = false;
       r.shells.push({ type: 'turnEnd' });
@@ -395,8 +447,18 @@ export function applyKiroV3Line(state: KiroV3State, line: string, opts: KiroV3Pa
       return r;
     }
     case 'session_metadata': {
-      if (str(payload.key) !== 'displayError') return undefined; // contextUsage: sem campo no escritório
       const v = obj(payload.value);
+      if (str(payload.key) === 'contextUsage') {
+        const pct = v.usagePercentage;
+        if (typeof pct !== 'number' || !Number.isFinite(pct)) return undefined;
+        const next = Math.min(100, Math.max(0, pct));
+        if (next !== state.contextPct) {
+          state.contextPct = next;
+          r.metaChanged = true;
+        }
+        return r;
+      }
+      if (str(payload.key) !== 'displayError') return undefined;
       act('err', { ...SPECIAL.error(undefined, str(v.message) || str(v.errorType)), error: true });
       return r;
     }
@@ -408,7 +470,9 @@ export function applyKiroV3Line(state: KiroV3State, line: string, opts: KiroV3Pa
       if (subSessionId) {
         const role = kiroRole(str(payload.subAgentName) || undefined);
         const title = kiroSubTitle(str(payload.prompt), str(payload.explanation));
-        r.subStart = { subSessionId, ...(role ? { role } : {}), ...(title ? { title } : {}) };
+        // shortcut: backgroundExecution não apareceu no sub_agent_start do 3.2 (só no session_start); lido se vier.
+        const background = payload.backgroundExecution === true || payload.background === true;
+        r.subStart = { subSessionId, ...(role ? { role } : {}), ...(title ? { title } : {}), ...(background ? { background } : {}) };
       }
       return r;
     }
@@ -423,8 +487,43 @@ export function applyKiroV3Line(state: KiroV3State, line: string, opts: KiroV3Pa
       }
       return r;
     }
-    case 'usage_summary': // créditos: AgentStats não tem campo para eles
+    case 'usage_summary': {
+      // Créditos do turno (unit "credit"); outra unidade fica de fora.
+      let credits = 0;
+      let seen = false;
+      for (const p of Array.isArray(payload.promptTurnSummaries) ? payload.promptTurnSummaries : []) {
+        const o = obj(p);
+        const unit = str(o.unit);
+        if (typeof o.usage !== 'number' || !Number.isFinite(o.usage) || o.usage < 0 || (unit && !/^credit/i.test(unit))) continue;
+        credits += o.usage;
+        seen = true;
+      }
+      if (seen) {
+        state.stats.credits = (state.stats.credits ?? 0) + credits;
+        r.statsChanged = true;
+      }
+      const ms = payload.elapsedTime;
+      const status = str(payload.status);
+      state.turnMs = typeof ms === 'number' && Number.isFinite(ms) && ms > 0 && !FAILED.test(status) && !INTERRUPTED.test(status) ? ms : undefined;
       return r;
+    }
+    case 'tombstone':
+      if (str(payload.kind) !== 'summarization') return undefined; // checkpoint_revert: sem atividade própria
+      act('compact', SPECIAL.compact());
+      return r;
+    case 'model_route': {
+      const model = str(payload.toModel).trim();
+      if (!model || model === state.model) return undefined;
+      state.model = model;
+      r.metaChanged = true;
+      return r;
+    }
+    case 'mode_change': {
+      const role = kiroRole(str(payload.toMode) || undefined);
+      if (!role) return undefined;
+      r.role = role;
+      return r;
+    }
     default:
       return undefined; // ContextualHookInvoked, steering_inclusion, session_event, agent_note…
   }

@@ -70,13 +70,15 @@ export class KiroTerminalParser implements TerminalParser {
           const toolData = part.data as { toolUseId?: string; name?: string; input?: Record<string, unknown> };
           const toolName = toolData.name || 'tool';
           const input = toolData.input || {};
-          const view = toolView(toolName, input);
+          // Escrita/edição de arquivo: nome e visão do Claude (Edit/Write), como no 3.x; o resto fica como veio.
+          const edit = kiroEditTool(toolName, input);
+          const view = edit ? kiroV3ToolView(toolName, input) : toolView(toolName, input);
 
           this.count++;
           entries.push({
             id: toolData.toolUseId || `kiro-term-tool-${this.count}`,
             kind: 'tool',
-            tool: toolName,
+            tool: edit ?? toolName,
             title: view.title,
             ...(view.input ? { input: view.input, inputKind: view.inputKind } : {}),
             at: now,
@@ -146,7 +148,8 @@ export class KiroTerminalParser implements TerminalParser {
         return [{
           id: s('toolCallId') || `kiro-term-tool-${this.count}`,
           kind: 'tool',
-          tool: toolName,
+          // Edit/Write no lugar de str_replace/fs_write/...: as entregas contam os arquivos editados por esse nome.
+          tool: kiroEditTool(toolName, args) ?? toolName,
           title: view.title,
           ...(view.input ? { input: view.input, inputKind: view.inputKind } : {}),
           at,
@@ -188,8 +191,32 @@ export class KiroTerminalParser implements TerminalParser {
         const text = s('response') || s('errorMessage');
         return [this.result(sub ? `kiro-sub-${sub}` : `tool-${this.count}`, text, s('status') === 'error', at)];
       }
+      // Vez cancelada (Ctrl+C): o mesmo aviso do Claude Code ("[Request interrupted by user]").
+      case 'turn_end': {
+        if (!/cancel|interrupt/i.test(s('stopReason'))) return [];
+        this.count++;
+        return [{ id: `kiro-term-int-${this.count}`, kind: 'system', text: tr('Interrompido pelo usuário'), level: 'warn', at }];
+      }
+      // Erro mostrado pelo Kiro (modelo/API fora, cota...): aviso de erro com a mensagem mascarada.
+      case 'session_metadata': {
+        if (s('key') !== 'displayError') return [];
+        const v = p.value && typeof p.value === 'object' && !Array.isArray(p.value) ? (p.value as Rec) : {};
+        const msg = strArg(v.message)?.trim() || strArg(v.errorType)?.trim() || (typeof p.value === 'string' ? p.value.trim() : '');
+        if (!msg) return [];
+        const masked = maskSecrets(msg);
+        const [first, ...rest] = masked.split('\n');
+        this.count++;
+        return [{
+          id: `kiro-term-err-${this.count}`,
+          kind: 'system',
+          text: tr('Erro: {0}', [first.slice(0, 300)]),
+          ...(rest.join('\n').trim() ? { detail: prepare(masked, TEXT_MAX).text } : {}),
+          level: 'error',
+          at,
+        }];
+      }
       default:
-        // session_metadata, turn_start/turn_end, usage_summary, session_event, steering_inclusion, hooks...
+        // session_metadata (contextUsage), turn_start, usage_summary, session_event, steering_inclusion, hooks...
         return [];
     }
   }
@@ -238,25 +265,43 @@ function strArg(v: unknown): string | undefined {
   return typeof v === 'string' ? v : undefined;
 }
 
+const KIRO_WRITE_TOOLS: ReadonlySet<string> = new Set(['fs_write', 'write', 'write_file']);
+/** O 2.x manda o tipo de escrita em `command` (create | str_replace/strReplace | append | insert). */
+const KIRO_EDIT_COMMAND = /str_?replace|append|insert/i;
+
+/**
+ * Nome do Claude Code (Edit/Write) de uma ferramenta de arquivo do Kiro (2.x e 3.x), ou undefined. Vai no `tool`
+ * das entradas do terminal (como o Codex faz com o apply_patch), e as entregas contam os arquivos editados por ele.
+ */
+export function kiroEditTool(tool: string, args: Rec): 'Edit' | 'Write' | undefined {
+  if (tool === 'str_replace' || tool === 'fs_append') return 'Edit';
+  if (!KIRO_WRITE_TOOLS.has(tool)) return undefined;
+  return KIRO_EDIT_COMMAND.test(strArg(args.command) ?? '') ? 'Edit' : 'Write';
+}
+
 /**
  * Título e prévia de um tool_call do 3.x pelo equivalente do Claude Code (mesmo toolView), como em
  * server/permissions/kiro.ts. Os argumentos do 3.x: str_replace usa {path, oldStr, newStr} (o hook manda
- * old_str/new_str), fs_write/fs_append {path, text}, read_file/readFile {path}. O resto: visão genérica.
+ * old_str/new_str), fs_write/fs_append {path, text}, read_file/readFile {path}. O 2.x (write/fs_write com
+ * `command`) também passa por aqui. O resto: visão genérica.
  */
 export function kiroV3ToolView(tool: string, args: Rec): ReturnType<typeof toolView> {
   const path = strArg(args.path) ?? strArg(args.file_path);
   if (KIRO_SHELL_TOOLS.has(tool)) return toolView('Bash', { command: strArg(args.command) ?? '' });
-  if (tool === 'fs_write' || tool === 'write' || tool === 'write_file') {
-    return toolView('Write', { file_path: path, content: strArg(args.text) ?? strArg(args.file_text) ?? strArg(args.content) ?? '' });
-  }
-  // Acréscimo no fim do arquivo: diff só com linhas novas.
-  if (tool === 'fs_append') return toolView('Edit', { file_path: path, old_string: '', new_string: strArg(args.text) ?? '' });
-  if (tool === 'str_replace') {
+  const cmd = KIRO_WRITE_TOOLS.has(tool) ? (strArg(args.command) ?? '') : '';
+  if (tool === 'str_replace' || /str_?replace/i.test(cmd)) {
     return toolView('Edit', {
       file_path: path,
       old_string: strArg(args.oldStr) ?? strArg(args.old_str) ?? '',
       new_string: strArg(args.newStr) ?? strArg(args.new_str) ?? '',
     });
+  }
+  // Acréscimo no fim do arquivo (ou inserção, no 2.x): diff só com linhas novas.
+  if (tool === 'fs_append' || /append|insert/i.test(cmd)) {
+    return toolView('Edit', { file_path: path, old_string: '', new_string: strArg(args.text) ?? strArg(args.new_str) ?? strArg(args.content) ?? '' });
+  }
+  if (KIRO_WRITE_TOOLS.has(tool)) {
+    return toolView('Write', { file_path: path, content: strArg(args.text) ?? strArg(args.file_text) ?? strArg(args.content) ?? '' });
   }
   if (/^(read|fs_read|read_file|readFile)$/.test(tool) && path) {
     const { path: _p, ...rest } = args;

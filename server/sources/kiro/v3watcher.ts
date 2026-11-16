@@ -8,8 +8,11 @@
 //   ("<sessionId>:<subSessionId>"), com atividades, status, tarefas e shells lidos de
 //   sub-executions/<subSessionId>.jsonl (mesmo formato; o arquivo pode aparecer depois do start).
 //   Na releitura, subagente que começou e terminou dentro dela não entra (como no Claude Code).
+// - Também publica créditos (stats.credits), contexto usado (contextPct), modelo real (model_route), papel
+//   (mode_change / agentMode) e autopilot (permissionMode 'auto'/'default'). Eventos do GitHub nos shells animam a
+//   sala só ao vivo; na releitura ficam de fora.
 // - Trava sumiu ou processo morreu: os subagentes saem calados e o personagem sai (closeMain).
-import { existsSync, readdirSync, readFileSync, statSync, watch, type FSWatcher } from 'node:fs';
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { join } from 'node:path';
 import type { Activity, AgentStatus } from '../../../shared/types';
 import { SPECIAL, truncate } from '../../../shared/activity';
@@ -57,6 +60,8 @@ export interface KiroV3Meta {
   title?: string;
   role?: string;
   model?: string;
+  /** autopilot true = 'auto' (Automático), false = 'default' (Padrão), os rótulos do modo de permissão. */
+  permissionMode?: string;
   createdAt?: number;
 }
 
@@ -75,8 +80,28 @@ export function readKiroV3Meta(path: string): KiroV3Meta | undefined {
     ...(str(m.title) ? { title: str(m.title) } : {}),
     ...(role ? { role } : {}),
     ...(str(m.modelId) ? { model: str(m.modelId) } : {}),
+    ...(typeof m.autopilot === 'boolean' ? { permissionMode: m.autopilot ? 'auto' : 'default' } : {}),
     ...(Number.isFinite(created) ? { createdAt: created } : {}),
   };
+}
+
+/**
+ * Subagente em segundo plano pela 1ª linha do arquivo dele (session_start.backgroundExecution, onde o 3.2 grava).
+ * Arquivo ausente ou formato desconhecido = false.
+ */
+export function readKiroV3SubBackground(path: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, 'r');
+    const buf = Buffer.alloc(64 * 1024);
+    const head = buf.subarray(0, readSync(fd, buf, 0, buf.length, 0)).toString('utf8');
+    const p = obj(obj(JSON.parse(head.split('\n', 1)[0])).payload);
+    return p.type === 'session_start' && p.backgroundExecution === true;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
 }
 
 export interface KiroV3WatcherDeps {
@@ -130,6 +155,11 @@ interface V3Session {
   waitingFor?: string;
   title?: string;
   model?: string;
+  /** Papel: o agentMode do session.json ou o último mode_change. */
+  role?: string;
+  /** agentMode do session.json da última leitura (só troca o papel quando ele muda). */
+  metaRole?: string;
+  permissionMode?: string;
   fsWatcher?: FSWatcher;
   /** subSessionId -> subagente (abertos e concluídos desta sessão). */
   subs: Map<string, V3Sub>;
@@ -314,6 +344,8 @@ export class KiroV3Watcher {
       shells: new ShellTracker(),
       base: 'idle',
       ...(meta.model ? { model: meta.model } : {}),
+      ...(meta.role ? { role: meta.role, metaRole: meta.role } : {}),
+      ...(meta.permissionMode ? { permissionMode: meta.permissionMode } : {}),
       subs: new Map(),
     };
 
@@ -332,6 +364,7 @@ export class KiroV3Watcher {
         if (r.subStart) openSubs.set(r.subStart.subSessionId, { start: r.subStart, at: r.at });
         if (r.subComplete) openSubs.delete(r.subComplete.subSessionId);
         acts.push(...r.activities);
+        if (r.role) s.role = r.role;
         this.applyShells(s, sessionId, r); // shell que terminou dentro da releitura já está no passado: sem 'ShellDone'
         if (r.status) {
           s.base = r.status;
@@ -364,7 +397,7 @@ export class KiroV3Watcher {
       account: this.account,
       sessionId,
       cwd: meta.cwd,
-      role: meta.role || tr('Agente do Kiro'),
+      role: s.role || tr('Agente do Kiro'),
       startedAt,
       status,
       ...(status === 'waiting' && s.waitingFor ? { waitingFor: s.waitingFor } : {}),
@@ -425,7 +458,10 @@ export class KiroV3Watcher {
       ...(s.title ? { title: s.title } : {}),
       tasks: s.state.tasks.map((t) => ({ ...t })),
       stats: { ...s.state.stats },
-      ...(s.model ? { model: s.model } : {}),
+      ...(s.state.model || s.model ? { model: s.state.model || s.model } : {}),
+      ...(s.permissionMode ? { permissionMode: s.permissionMode } : {}),
+      ...(s.state.contextPct !== undefined ? { contextPct: s.state.contextPct } : {}),
+      ...(s.role ? { role: s.role } : {}),
       ...(lastAt ? { lastAt } : {}),
     });
   }
@@ -443,6 +479,9 @@ export class KiroV3Watcher {
     s.metaMtime = mtime;
     s.title = cleanKiroTitle(meta.title) ?? s.title;
     s.model = meta.model ?? s.model;
+    s.permissionMode = meta.permissionMode ?? s.permissionMode;
+    if (meta.role && meta.role !== s.metaRole) s.role = meta.role;
+    s.metaRole = meta.role ?? s.metaRole;
     return true;
   }
 
@@ -460,8 +499,13 @@ export class KiroV3Watcher {
           s.title = truncate(r.promptText, 90);
           changed = true;
         }
-        if (r.tasksChanged || r.statsChanged) changed = true;
+        if (r.tasksChanged || r.statsChanged || r.metaChanged) changed = true;
+        if (r.role && r.role !== s.role) {
+          s.role = r.role;
+          changed = true;
+        }
         for (const a of r.activities) this.office.addActivity(s.sessionId, a, true);
+        if (r.github) this.office.githubEvent(s.sessionId, r.github.event, { key: r.github.key, at: r.at, live: true });
         if (r.shells.length) {
           shellsChanged = true;
           for (const fin of this.applyShells(s, s.sessionId, r)) this.reportShellDone(s.sessionId, fin, true);
@@ -506,7 +550,8 @@ export class KiroV3Watcher {
       sessionId: s.sessionId,
       role: start.role || tr('Subagente'),
       ...(start.title ? { title: start.title } : {}),
-      background: false,
+      // shortcut: arquivo do subagente que aparece depois do start fica em primeiro plano.
+      background: start.background === true || readKiroV3SubBackground(path),
       startedAt: at,
     });
     if (!added) return;
@@ -532,9 +577,11 @@ export class KiroV3Watcher {
         const r = applyKiroV3Line(sub.state, line, { idPrefix: sub.id, now: this.now() });
         if (!r) continue;
         lastAt = Math.max(lastAt ?? 0, r.at);
-        if (r.tasksChanged || r.statsChanged) changed = true;
+        if (r.tasksChanged || r.statsChanged || r.metaChanged) changed = true;
         if (live) for (const a of r.activities) this.office.addActivity(sub.id, a, true);
         else acts.push(...r.activities);
+        // Só o que chega ao vivo anima a sala (como no Codex); na releitura o evento fica de fora.
+        if (live && r.github) this.office.githubEvent(sub.id, r.github.event, { key: r.github.key, at: r.at, live: true });
         if (r.shells.length) {
           shellsChanged = true;
           for (const fin of this.applyShells(sub, sub.id, r)) if (live) this.reportShellDone(sub.id, fin, true);
@@ -558,6 +605,8 @@ export class KiroV3Watcher {
       this.office.applyTranscript(sub.id, {
         tasks: sub.state.tasks.map((t) => ({ ...t })),
         stats: { ...sub.state.stats },
+        ...(sub.state.model ? { model: sub.state.model } : {}),
+        ...(sub.state.contextPct !== undefined ? { contextPct: sub.state.contextPct } : {}),
         ...(lastAt ? { lastAt } : {}),
       });
     }

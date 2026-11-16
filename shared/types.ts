@@ -122,6 +122,8 @@ export interface AgentStats {
   tokensIn: number;
   tokensOut: number;
   costUSD?: number;
+  /** Kiro: créditos gastos (usage_summary, unit "credit"); o Kiro não informa tokens. Não vai ao Habblaud World. */
+  credits?: number;
   linesAdded?: number;
   linesRemoved?: number;
   /** Total de subagentes disparados por este agente. */
@@ -164,6 +166,8 @@ export interface AgentInfo {
   model?: string;
   gitBranch?: string;
   permissionMode?: string;
+  /** Kiro: contexto usado (0–100 %, session_metadata contextUsage). Não vai ao Habblaud World. */
+  contextPct?: number;
   startedAt: number;
   lastEventAt: number;
   /** Quando o status mudou pela última vez (epoch ms). */

@@ -178,6 +178,49 @@ describe('KiroTerminalParser', () => {
       expect(r).toMatchObject({ kind: 'result', toolUseId: 'kiro-sub-sub-1', text: 'caiu', error: true });
     });
 
+    it('turn_end cancelado vira "Interrompido pelo usuário"; end_turn não', () => {
+      const p = new KiroTerminalParser();
+      for (const stopReason of ['cancelled', 'Interrupted']) {
+        expect(p.push(v3({ type: 'turn_end', turnId: 't1', stopReason }))[0]).toMatchObject({ kind: 'system', level: 'warn', text: 'Interrompido pelo usuário', at: AT });
+      }
+      expect(p.push(v3({ type: 'turn_end', turnId: 't1', stopReason: 'end_turn' }))).toEqual([]);
+    });
+
+    it('displayError vira erro do sistema com a mensagem mascarada; contextUsage não', () => {
+      const p = new KiroTerminalParser();
+      const [e] = p.push(v3({ type: 'session_metadata', key: 'displayError', value: { message: 'falhou o modelo\nAuthorization: Bearer fake_token_abcdef123456', errorType: 'x' } }));
+      expect(e).toMatchObject({ kind: 'system', level: 'error', text: 'Erro: falhou o modelo', at: AT });
+      expect(JSON.stringify(e)).not.toContain('fake_token_abcdef123456');
+      expect(p.push(v3({ type: 'session_metadata', key: 'displayError', value: { errorType: 'ThrottlingError' } }))[0]).toMatchObject({ text: 'Erro: ThrottlingError' });
+      expect(p.push(v3({ type: 'session_metadata', key: 'displayError', value: {} }))).toEqual([]);
+      expect(p.push(v3({ type: 'session_metadata', key: 'contextUsage', value: { usagePercentage: 12 } }))).toEqual([]);
+    });
+
+    it('ferramentas de arquivo levam o nome do Claude (Edit/Write); o resto fica como veio', () => {
+      const p = new KiroTerminalParser();
+      const name = (toolName: string, args: Record<string, unknown>) => {
+        const [e] = p.push(v3({ type: 'tool_call', toolCallId: `n-${toolName}`, toolName, args }));
+        return e.kind === 'tool' ? e.tool : '';
+      };
+      expect(name('str_replace', { path: '/tmp/a', oldStr: 'a', newStr: 'b' })).toBe('Edit');
+      expect(name('fs_append', { path: '/tmp/a', text: 'x' })).toBe('Edit');
+      expect(name('fs_write', { path: '/tmp/a', text: 'x' })).toBe('Write');
+      expect(name('read_file', { path: '/tmp/a' })).toBe('read_file');
+      expect(name('shell', { command: 'ls' })).toBe('shell');
+    });
+
+    it('2.x: write com command vira Edit/Write com diff; fs_read fica igual', () => {
+      const p = new KiroTerminalParser();
+      const use = (name: string, input: Record<string, unknown>) =>
+        p.push(JSON.stringify({ kind: 'AssistantMessage', data: { content: [{ kind: 'toolUse', data: { toolUseId: `u-${name}`, name, input } }] } }))[0];
+      const ed = use('write', { command: 'strReplace', path: '/tmp/x/app.ts', oldStr: 'antigo', newStr: 'novo' });
+      expect(ed).toMatchObject({ kind: 'tool', tool: 'Edit', inputKind: 'diff' });
+      if (ed.kind === 'tool') expect([ed.title, ed.input?.includes('novo')]).toEqual([expect.stringMatching(/^Edit\(.*app\.ts\)$/), true]);
+      expect(use('fs_write', { command: 'create', path: '/tmp/x/n.md', file_text: 'oi' })).toMatchObject({ tool: 'Write', title: expect.stringMatching(/^Write\(.*n\.md\)$/) });
+      expect(use('fs_write', { command: 'append', path: '/tmp/x/l.txt', new_str: 'fim' })).toMatchObject({ tool: 'Edit' });
+      expect(use('fs_read', { path: '/tmp/x/a' })).toMatchObject({ tool: 'fs_read' });
+    });
+
     it('ignora eventos sem conteúdo de conversa e lixo', () => {
       const p = new KiroTerminalParser();
       for (const type of ['session_metadata', 'ContextualHookInvoked', 'turn_start', 'turn_end', 'usage_summary', 'session_event', 'steering_inclusion', 'agent_note', 'interaction_resolved']) {
